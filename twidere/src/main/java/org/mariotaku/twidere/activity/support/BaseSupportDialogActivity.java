@@ -20,32 +20,19 @@
 package org.mariotaku.twidere.activity.support;
 
 import android.annotation.SuppressLint;
-import android.content.res.Resources;
 import android.os.Bundle;
 
 import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.activity.iface.IThemedActivity;
 import org.mariotaku.twidere.app.TwidereApplication;
-import org.mariotaku.twidere.content.res.NoAccentResources;
 import org.mariotaku.twidere.util.ThemeUtils;
-import org.mariotaku.twidere.util.theme.TwidereResourceHelper;
 
 @SuppressLint("Registered")
-public class BaseSupportDialogActivity extends BaseSupportThemedActivity implements Constants, IThemedActivity, TwidereResourceHelper.OnInitListener {
+public class BaseSupportDialogActivity extends ThemedFragmentActivity implements Constants {
 
-    private TwidereResourceHelper mResourceHelper;
     private boolean mInstanceStateSaved;
 
     @Override
-    public Resources getResources() {
-        if (mResourceHelper == null) {
-            mResourceHelper = new TwidereResourceHelper(getThemeResourceId(), this);
-        }
-        return mResourceHelper.getResources(this, getDefaultResources());
-    }
-
-    @Override
-    public int getOverrideAccentColor() {
+    public int getThemeColor() {
         return ThemeUtils.getThemeColor(this, getThemeResourceId());
     }
 
@@ -56,12 +43,6 @@ public class BaseSupportDialogActivity extends BaseSupportThemedActivity impleme
 
     public TwidereApplication getTwidereApplication() {
         return (TwidereApplication) getApplication();
-    }
-
-    @Override
-    public final boolean shouldOverrideActivityAnimation() {
-        // Dialog theme should never use custom animations
-        return false;
     }
 
     protected boolean isStateSaved() {
@@ -78,10 +59,5 @@ public class BaseSupportDialogActivity extends BaseSupportThemedActivity impleme
     protected void onSaveInstanceState(final Bundle outState) {
         mInstanceStateSaved = true;
         super.onSaveInstanceState(outState);
-    }
-
-    @Override
-    public void onInitResources(NoAccentResources resources) {
-        ThemeUtils.initResourceInterceptors(this, resources);
     }
 }

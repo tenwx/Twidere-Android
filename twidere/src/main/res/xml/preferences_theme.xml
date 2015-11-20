@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:title="@string/theme">
+
+    <org.mariotaku.twidere.preference.DarkLightThemeTogglePreference
+        android:key="theme"
+        android:order="21"
+        android:title="@string/dark_theme">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+        <extra
+            android:name="restart_activity"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.DarkLightThemeTogglePreference>
+
+    <org.mariotaku.twidere.preference.ThemeBackgroundPreference
+        android:defaultValue="default"
+        android:order="22"
+        android:title="@string/background">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+        <extra
+            android:name="restart_activity"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.ThemeBackgroundPreference>
+
+    <org.mariotaku.twidere.preference.ColorPickerPreference
+        android:key="theme_color"
+        android:order="23"
+        android:title="@string/color"
+        app:defaultColor="@color/branding_color">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+        <extra
+            android:name="restart_activity"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.ColorPickerPreference>
+
+    <org.mariotaku.twidere.preference.ThemeFontFamilyPreference
+        android:defaultValue="sans-serif-light"
+        android:enabled="@bool/has_font_family"
+        android:key="theme_font_family"
+        android:order="24"
+        android:title="@string/font_family">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+        <extra
+            android:name="restart_activity"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.ThemeFontFamilyPreference>
+
+
+</PreferenceScreen>

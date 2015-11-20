@@ -21,26 +21,26 @@ package org.mariotaku.twidere.loader.support;
 
 import android.content.Context;
 
+import org.mariotaku.twidere.model.ListResponse;
 import org.mariotaku.twidere.model.ParcelableStatus;
 
-import java.util.Collections;
 import java.util.List;
 
 public final class DummyParcelableStatusesLoader extends ParcelableStatusesLoader {
 
-	public DummyParcelableStatusesLoader(final Context context) {
-		this(context, null);
-	}
+    public DummyParcelableStatusesLoader(final Context context) {
+        this(context, null, false);
+    }
 
-	public DummyParcelableStatusesLoader(final Context context, final List<ParcelableStatus> data) {
-		super(context, data, -1);
-	}
+    public DummyParcelableStatusesLoader(final Context context, final List<ParcelableStatus> data, boolean fromUser) {
+        super(context, data, -1, fromUser);
+    }
 
-	@Override
-	public List<ParcelableStatus> loadInBackground() {
-		final List<ParcelableStatus> data = getData();
-		if (data != null) return data;
-		return Collections.emptyList();
-	}
+    @Override
+    public ListResponse<ParcelableStatus> loadInBackground() {
+        final List<ParcelableStatus> data = getData();
+        if (data != null) return ListResponse.getListInstance(data);
+        return ListResponse.emptyListInstance();
+    }
 
 }

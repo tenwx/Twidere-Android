@@ -20,27 +20,36 @@
 package org.mariotaku.twidere.loader.support;
 
 import android.content.Context;
+import android.database.sqlite.SQLiteDatabase;
 
 import org.mariotaku.twidere.model.ParcelableActivity;
 
-import twitter4j.Activity;
-import twitter4j.Paging;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-
 import java.util.List;
 
-public class ActivitiesByFriendsLoader extends Twitter4JActivitiesLoader {
+import org.mariotaku.twidere.api.twitter.model.Activity;
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
 
-	public ActivitiesByFriendsLoader(final Context context, final long[] accountIds,
-			final List<ParcelableActivity> data, final String[] saveFileArgs, final boolean useCache) {
-		super(context, accountIds, data, saveFileArgs, useCache);
-	}
+public class ActivitiesByFriendsLoader extends TwitterAPIActivitiesLoader {
 
-	@Override
-	protected List<Activity> getActivities(final Twitter twitter, final Paging paging) throws TwitterException {
-		if (twitter == null) return null;
-		return twitter.getActivitiesByFriends(paging);
-	}
+
+    public ActivitiesByFriendsLoader(final Context context, final long accountId, long sinceId,
+                                     long maxId, final List<ParcelableActivity> data,
+                                     final String[] saveFileArgs, final int position) {
+        super(context, accountId, sinceId, maxId, data, saveFileArgs, position);
+    }
+
+    @Override
+    protected List<Activity> getActivities(final Twitter twitter, final Paging paging) throws TwitterException {
+        if (twitter == null) return null;
+        return twitter.getActivitiesByFriends(paging);
+    }
+
+    @Override
+    protected boolean shouldFilterActivity(SQLiteDatabase database, ParcelableActivity activity) {
+        return false;
+    }
+
 
 }

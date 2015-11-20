@@ -19,7 +19,7 @@
 
 package org.mariotaku.twidere.activity.support;
 
-import android.annotation.TargetApi;
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -30,61 +30,81 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.PorterDuff.Mode;
 import android.graphics.Rect;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
-import android.os.Build;
+import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Parcelable;
-import android.provider.MediaStore;
+import android.provider.BaseColumns;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.DialogFragment;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.content.ContextCompat;
 import android.support.v4.util.LongSparseArray;
+import android.support.v7.internal.view.SupportMenuInflater;
+import android.support.v7.widget.ActionMenuView;
+import android.support.v7.widget.ActionMenuView.OnMenuItemClickListener;
+import android.support.v7.widget.DefaultItemAnimator;
+import android.support.v7.widget.FixedLinearLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.RecyclerView.ItemDecoration;
+import android.support.v7.widget.RecyclerView.State;
+import android.support.v7.widget.RecyclerView.ViewHolder;
 import android.text.Editable;
+import android.text.Spannable;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.CharacterStyle;
+import android.text.style.ImageSpan;
+import android.text.style.MetricAffectingSpan;
+import android.text.style.URLSpan;
 import android.util.Log;
+import android.view.ActionMode;
+import android.view.ActionMode.Callback;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.MenuItem.OnMenuItemClickListener;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
-import android.widget.EditText;
+import android.view.Window;
 import android.widget.GridView;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.TextView.OnEditorActionListener;
 import android.widget.Toast;
 
+import com.github.johnpersano.supertoasts.SuperToast;
+import com.github.johnpersano.supertoasts.SuperToast.Duration;
+import com.github.johnpersano.supertoasts.SuperToast.OnDismissListener;
 import com.nostra13.universalimageloader.utils.IoUtils;
-import com.scvngr.levelup.views.gallery.AdapterView;
-import com.scvngr.levelup.views.gallery.AdapterView.OnItemClickListener;
-import com.scvngr.levelup.views.gallery.AdapterView.OnItemLongClickListener;
-import com.scvngr.levelup.views.gallery.Gallery;
 import com.twitter.Extractor;
 
 import org.mariotaku.dynamicgridview.DraggableArrayAdapter;
-import org.mariotaku.menucomponent.widget.MenuBar;
-import org.mariotaku.menucomponent.widget.PopupMenu;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.adapter.BaseArrayAdapter;
-import org.mariotaku.twidere.app.TwidereApplication;
+import org.mariotaku.twidere.adapter.BaseRecyclerViewAdapter;
 import org.mariotaku.twidere.fragment.support.BaseSupportDialogFragment;
-import org.mariotaku.twidere.model.Account;
+import org.mariotaku.twidere.fragment.support.SupportProgressDialogFragment;
+import org.mariotaku.twidere.fragment.support.ViewStatusDialogFragment;
+import org.mariotaku.twidere.model.ConsumerKeyType;
 import org.mariotaku.twidere.model.DraftItem;
+import org.mariotaku.twidere.model.ParcelableAccount;
+import org.mariotaku.twidere.model.ParcelableCredentials;
 import org.mariotaku.twidere.model.ParcelableLocation;
 import org.mariotaku.twidere.model.ParcelableMedia;
 import org.mariotaku.twidere.model.ParcelableMediaUpdate;
@@ -92,21 +112,28 @@ import org.mariotaku.twidere.model.ParcelableStatus;
 import org.mariotaku.twidere.model.ParcelableStatusUpdate;
 import org.mariotaku.twidere.model.ParcelableUser;
 import org.mariotaku.twidere.preference.ServicePickerPreference;
-import org.mariotaku.twidere.provider.TweetStore.Drafts;
-import org.mariotaku.twidere.task.AsyncTask;
-import org.mariotaku.twidere.util.ArrayUtils;
-import org.mariotaku.twidere.util.AsyncTwitterWrapper;
+import org.mariotaku.twidere.provider.TwidereDataStore.Drafts;
+import org.mariotaku.twidere.text.MarkForDeleteSpan;
+import org.mariotaku.twidere.util.AsyncTaskUtils;
 import org.mariotaku.twidere.util.ContentValuesCreator;
-import org.mariotaku.twidere.util.ImageLoaderWrapper;
+import org.mariotaku.twidere.util.EditTextEnterHandler;
+import org.mariotaku.twidere.util.EditTextEnterHandler.EnterListener;
+import org.mariotaku.twidere.util.KeyboardShortcutsHandler;
 import org.mariotaku.twidere.util.MathUtils;
+import org.mariotaku.twidere.util.MediaLoaderWrapper;
+import org.mariotaku.twidere.util.MenuUtils;
 import org.mariotaku.twidere.util.ParseUtils;
-import org.mariotaku.twidere.util.SharedPreferencesWrapper;
+import org.mariotaku.twidere.util.PermissionUtils;
 import org.mariotaku.twidere.util.ThemeUtils;
+import org.mariotaku.twidere.util.TwidereArrayUtils;
 import org.mariotaku.twidere.util.TwidereValidator;
-import org.mariotaku.twidere.util.accessor.ViewAccessor;
+import org.mariotaku.twidere.util.TwitterContentUtils;
+import org.mariotaku.twidere.util.Utils;
+import org.mariotaku.twidere.view.ActionIconView;
+import org.mariotaku.twidere.view.BadgeView;
+import org.mariotaku.twidere.view.ComposeEditText;
+import org.mariotaku.twidere.view.ShapedImageView;
 import org.mariotaku.twidere.view.StatusTextCountView;
-import org.mariotaku.twidere.view.holder.StatusViewHolder;
-import org.mariotaku.twidere.view.iface.IColorLabelView;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -116,156 +143,304 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.TreeSet;
 
-import de.keyboardsurfer.android.widget.crouton.Crouton;
-import de.keyboardsurfer.android.widget.crouton.CroutonStyle;
+public class ComposeActivity extends ThemedFragmentActivity implements LocationListener,
+        OnMenuItemClickListener, OnClickListener, OnLongClickListener, Callback {
 
-import static android.os.Environment.getExternalStorageState;
-import static android.text.TextUtils.isEmpty;
-import static org.mariotaku.twidere.model.ParcelableLocation.isValidLocation;
-import static org.mariotaku.twidere.util.ParseUtils.parseString;
-import static org.mariotaku.twidere.util.ThemeUtils.getActionBarBackground;
-import static org.mariotaku.twidere.util.ThemeUtils.getComposeThemeResource;
-import static org.mariotaku.twidere.util.ThemeUtils.getWindowContentOverlayForCompose;
-import static org.mariotaku.twidere.util.UserColorNicknameUtils.getUserColor;
-import static org.mariotaku.twidere.util.Utils.addIntentToMenu;
-import static org.mariotaku.twidere.util.Utils.copyStream;
-import static org.mariotaku.twidere.util.Utils.getAccountColors;
-import static org.mariotaku.twidere.util.Utils.getAccountIds;
-import static org.mariotaku.twidere.util.Utils.getAccountName;
-import static org.mariotaku.twidere.util.Utils.getAccountScreenName;
-import static org.mariotaku.twidere.util.Utils.getCardHighlightColor;
-import static org.mariotaku.twidere.util.Utils.getDefaultTextSize;
-import static org.mariotaku.twidere.util.Utils.getDisplayName;
-import static org.mariotaku.twidere.util.Utils.getImageUploadStatus;
-import static org.mariotaku.twidere.util.Utils.getQuoteStatus;
-import static org.mariotaku.twidere.util.Utils.getShareStatus;
-import static org.mariotaku.twidere.util.Utils.getStatusTypeIconRes;
-import static org.mariotaku.twidere.util.Utils.getUserTypeIconRes;
-import static org.mariotaku.twidere.util.Utils.showErrorMessage;
-import static org.mariotaku.twidere.util.Utils.showMenuItemToast;
-
-public class ComposeActivity extends BaseSupportDialogActivity implements TextWatcher, LocationListener,
-        OnMenuItemClickListener, OnClickListener, OnEditorActionListener, OnItemClickListener, OnItemLongClickListener,
-        OnLongClickListener {
-
+    // Constants
     private static final String FAKE_IMAGE_LINK = "https://www.example.com/fake_image.jpg";
-
     private static final String EXTRA_IS_POSSIBLY_SENSITIVE = "is_possibly_sensitive";
-
     private static final String EXTRA_SHOULD_SAVE_ACCOUNTS = "should_save_accounts";
-
     private static final String EXTRA_ORIGINAL_TEXT = "original_text";
-
-    private static final String EXTRA_TEMP_URI = "temp_uri";
     private static final String EXTRA_SHARE_SCREENSHOT = "share_screenshot";
+    private static final String DISCARD_STATUS_DIALOG_FRAGMENT_TAG = "discard_status";
 
-    private TwidereValidator mValidator;
+    // Utility classes
     private final Extractor mExtractor = new Extractor();
-
-    private AsyncTwitterWrapper mTwitterWrapper;
+    private TwidereValidator mValidator;
     private LocationManager mLocationManager;
-    private SharedPreferencesWrapper mPreferences;
-    private ParcelableLocation mRecentLocation;
-
     private ContentResolver mResolver;
-    private AsyncTask<Void, Void, ?> mTask;
-    private PopupMenu mPopupMenu;
-    private TextView mTitleView, mSubtitleView;
-    private GridView mMediasPreviewGrid;
+    private AsyncTask<Object, Object, ?> mTask;
+    private SupportMenuInflater mMenuInflater;
 
-    private MenuBar mBottomMenuBar, mActionMenuBar;
-    private IColorLabelView mColorIndicator;
-    private EditText mEditText;
-    private ProgressBar mProgress;
-    private Gallery mAccountSelector;
-    private View mAccountSelectorDivider, mBottomSendDivider;
-    private View mBottomMenuContainer;
-    private View mSendView, mBottomSendView;
-    private StatusTextCountView mSendTextCountView, mBottomSendTextCountView;
-
-    private MediaPreviewAdapter mMediaPreviewAdapter;
-    private AccountSelectorAdapter mAccountSelectorAdapter;
-
-    private boolean mIsPossiblySensitive, mShouldSaveAccounts;
-
-    private long[] mAccountIds, mSendAccountIds;
-
-    private Uri mTempPhotoUri;
-    private boolean mImageUploaderUsed, mStatusShortenerUsed;
-    private ParcelableStatus mInReplyToStatus;
-
-    private ParcelableUser mMentionUser;
+    // Views
+    private GridView mMediaPreviewGrid;
+    private ActionMenuView mMenuBar;
+    private ComposeEditText mEditText;
+    private View mSendView;
+    private StatusTextCountView mSendTextCountView;
+    private RecyclerView mAccountSelector;
+    private View mAccountSelectorContainer;
     private DraftItem mDraftItem;
-    private long mInReplyToStatusId;
+    private ShapedImageView mProfileImageView;
+    private BadgeView mCountView;
+    private View mAccountSelectorButton;
+    private View mLocationContainer;
+    private ActionIconView mLocationIcon;
+    private TextView mLocationText;
+
+    // Adapters
+    private MediaPreviewAdapter mMediaPreviewAdapter;
+    private AccountIconsAdapter mAccountsAdapter;
+
+    // Data fields
+    private ParcelableLocation mRecentLocation;
+    private ParcelableStatus mInReplyToStatus;
+    private ParcelableUser mMentionUser;
     private String mOriginalText;
-
-    private boolean mBottomSendButton;
-
-    private final Rect mWindowDecorHitRect = new Rect();
-
-    @Override
-    public void afterTextChanged(final Editable s) {
-
-    }
-
-    @Override
-    public void beforeTextChanged(final CharSequence s, final int start, final int count, final int after) {
-
-    }
+    private long mInReplyToStatusId;
+    private boolean mIsPossiblySensitive, mShouldSaveAccounts;
+    private boolean mImageUploaderUsed, mStatusShortenerUsed;
+    private boolean mNavigateBackPressed;
+    private boolean mTextChanged;
+    private SetProgressVisibleRunnable mSetProgressVisibleRunnable;
+    private boolean mFragmentResumed;
+    private int mKeyMetaState;
 
     @Override
-    public int getOverrideAccentColor() {
-        return ThemeUtils.getUserThemeColor(this);
+    public int getThemeColor() {
+        return ThemeUtils.getUserAccentColor(this);
     }
 
     @Override
     public int getThemeResourceId() {
-        return getComposeThemeResource(this);
+        return ThemeUtils.getComposeThemeResource(this);
     }
 
-    public boolean handleMenuItem(final MenuItem item) {
+    @Override
+    public void onActivityResult(final int requestCode, final int resultCode, final Intent intent) {
+        switch (requestCode) {
+            case REQUEST_TAKE_PHOTO:
+            case REQUEST_PICK_IMAGE:
+            case REQUEST_OPEN_DOCUMENT: {
+                if (resultCode == Activity.RESULT_OK) {
+                    final Uri src = intent.getData();
+                    mTask = AsyncTaskUtils.executeTask(new AddMediaTask(this, src,
+                            createTempImageUri(), ParcelableMedia.TYPE_IMAGE, true));
+                }
+                break;
+            }
+            case REQUEST_EDIT_IMAGE: {
+                if (resultCode == Activity.RESULT_OK) {
+                    final Uri uri = intent.getData();
+                    if (uri == null) {
+                        break;
+                    }
+                    setMenu();
+                    updateTextCount();
+                }
+                break;
+            }
+            case REQUEST_EXTENSION_COMPOSE: {
+                if (resultCode == Activity.RESULT_OK) {
+                    final String text = intent.getStringExtra(EXTRA_TEXT);
+                    final String append = intent.getStringExtra(EXTRA_APPEND_TEXT);
+                    final Uri imageUri = intent.getParcelableExtra(EXTRA_IMAGE_URI);
+                    if (text != null) {
+                        mEditText.setText(text);
+                    } else if (append != null) {
+                        mEditText.append(append);
+                    }
+                    if (imageUri != null) {
+                    }
+                    setMenu();
+                    updateTextCount();
+                }
+                break;
+            }
+        }
+
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (mTask != null && mTask.getStatus() == AsyncTask.Status.RUNNING) return;
+        final String text = mEditText != null ? ParseUtils.parseString(mEditText.getText()) : null;
+        final boolean textChanged = text != null && !text.isEmpty() && !text.equals(mOriginalText);
+        final boolean isEditingDraft = INTENT_ACTION_EDIT_DRAFT.equals(getIntent().getAction());
+        if (textChanged || hasMedia() || isEditingDraft) {
+            saveToDrafts();
+            Toast.makeText(this, R.string.status_saved_to_draft, Toast.LENGTH_SHORT).show();
+            finish();
+        } else {
+            mTask = AsyncTaskUtils.executeTask(new DiscardTweetTask(this));
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(final Bundle outState) {
+        outState.putLongArray(EXTRA_ACCOUNT_IDS, mAccountsAdapter.getSelectedAccountIds());
+        outState.putParcelableArrayList(EXTRA_MEDIA, new ArrayList<Parcelable>(getMediaList()));
+        outState.putBoolean(EXTRA_IS_POSSIBLY_SENSITIVE, mIsPossiblySensitive);
+        outState.putParcelable(EXTRA_STATUS, mInReplyToStatus);
+        outState.putLong(EXTRA_STATUS_ID, mInReplyToStatusId);
+        outState.putParcelable(EXTRA_USER, mMentionUser);
+        outState.putParcelable(EXTRA_DRAFT, mDraftItem);
+        outState.putBoolean(EXTRA_SHOULD_SAVE_ACCOUNTS, mShouldSaveAccounts);
+        outState.putString(EXTRA_ORIGINAL_TEXT, mOriginalText);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        mImageUploaderUsed = !ServicePickerPreference.isNoneValue(mPreferences.getString(KEY_MEDIA_UPLOADER, null));
+        mStatusShortenerUsed = !ServicePickerPreference.isNoneValue(mPreferences.getString(KEY_STATUS_SHORTENER, null));
+        requestOrUpdateLocation();
+        setMenu();
+        updateTextCount();
+        final int textSize = mPreferences.getInt(KEY_TEXT_SIZE, Utils.getDefaultTextSize(this));
+        mEditText.setTextSize(textSize * 1.25f);
+    }
+
+    @Override
+    protected void onStop() {
+        saveAccountSelection();
+        try {
+            mLocationManager.removeUpdates(this);
+        } catch (SecurityException ignore) {
+        }
+        super.onStop();
+    }
+
+    @Override
+    public void onClick(final View view) {
+        switch (view.getId()) {
+            case R.id.send: {
+                confirmAndUpdateStatus();
+                break;
+            }
+            case R.id.account_selector_container: {
+                setAccountSelectorVisible(false);
+                break;
+            }
+            case R.id.account_selector_button: {
+                final boolean isVisible = mAccountSelectorContainer.getVisibility() == View.VISIBLE;
+                mAccountSelectorContainer.setVisibility(isVisible ? View.GONE : View.VISIBLE);
+                break;
+            }
+            case R.id.location_container: {
+                toggleLocation();
+                break;
+            }
+        }
+    }
+
+    private void confirmAndUpdateStatus() {
+        if (isQuotingProtectedStatus()) {
+            new RetweetProtectedStatusWarnFragment().show(getSupportFragmentManager(),
+                    "retweet_protected_status_warning_message");
+        } else {
+            updateStatus();
+        }
+    }
+
+    @Override
+    public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+        final Window window = getWindow();
+        final Rect rect = new Rect();
+        window.getDecorView().getWindowVisibleDisplayFrame(rect);
+        final int actionBarHeight = ThemeUtils.getActionBarHeight(this);
+        final View contentView = window.findViewById(android.R.id.content);
+        final int[] location = new int[2];
+        contentView.getLocationOnScreen(location);
+        if (location[1] > actionBarHeight) {
+            contentView.setPadding(contentView.getPaddingLeft(), 0,
+                    contentView.getPaddingRight(), contentView.getPaddingBottom());
+            return true;
+        }
+        // Offset content view
+        final int statusBarHeight = rect.top;
+        contentView.getWindowVisibleDisplayFrame(rect);
+        final int paddingTop = statusBarHeight + actionBarHeight - rect.top;
+        contentView.setPadding(contentView.getPaddingLeft(), paddingTop,
+                contentView.getPaddingRight(), contentView.getPaddingBottom());
+        return true;
+    }
+
+    @Override
+    public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+        return true;
+    }
+
+    @Override
+    public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+        return false;
+    }
+
+    @Override
+    public void onDestroyActionMode(ActionMode mode) {
+        final Window window = getWindow();
+        final View contentView = window.findViewById(android.R.id.content);
+        contentView.setPadding(contentView.getPaddingLeft(), 0,
+                contentView.getPaddingRight(), contentView.getPaddingBottom());
+    }
+
+    @Override
+    public void onLocationChanged(final Location location) {
+        setRecentLocation(ParcelableLocation.fromLocation(location));
+    }
+
+    @Override
+    public void onStatusChanged(final String provider, final int status, final Bundle extras) {
+
+    }
+
+    @Override
+    public void onProviderEnabled(final String provider) {
+    }
+
+    @Override
+    public void onProviderDisabled(final String provider) {
+    }
+
+    @Override
+    public boolean onLongClick(final View v) {
+        switch (v.getId()) {
+            case R.id.send: {
+                Utils.showMenuItemToast(v, getString(R.string.send), true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean onMenuItemClick(final MenuItem item) {
         switch (item.getItemId()) {
-            case MENU_TAKE_PHOTO: {
+            case R.id.take_photo:
+            case R.id.take_photo_sub_item: {
                 takePhoto();
                 break;
             }
-            case MENU_ADD_IMAGE: {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT || !openDocument()) {
-                    pickImage();
-                }
+            case R.id.add_image:
+            case R.id.add_image_sub_item: {
+                pickImage();
                 break;
             }
-            case MENU_ADD_LOCATION: {
-                final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
-                if (!attachLocation) {
-                    getLocation();
-                } else {
-                    mLocationManager.removeUpdates(this);
-                }
-                mPreferences.edit().putBoolean(KEY_ATTACH_LOCATION, !attachLocation).apply();
-                setMenu();
-                updateTextCount();
+            case R.id.add_location: {
+                toggleLocation();
                 break;
             }
-            case MENU_DRAFTS: {
-                startActivity(new Intent(INTENT_ACTION_DRAFTS));
+            case R.id.drafts: {
+                Utils.openDrafts(this);
                 break;
             }
-            case MENU_DELETE: {
-                new DeleteImageTask(this).execute();
+            case R.id.delete: {
+                AsyncTaskUtils.executeTask(new DeleteImageTask(this));
                 break;
             }
-            case MENU_TOGGLE_SENSITIVE: {
+            case R.id.toggle_sensitive: {
                 if (!hasMedia()) return false;
                 mIsPossiblySensitive = !mIsPossiblySensitive;
                 setMenu();
                 updateTextCount();
                 break;
             }
-            case MENU_VIEW: {
+            case R.id.view: {
                 if (mInReplyToStatus == null) return false;
                 final DialogFragment fragment = new ViewStatusDialogFragment();
                 final Bundle args = new Bundle();
@@ -274,18 +449,25 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
                 fragment.show(getSupportFragmentManager(), "view_status");
                 break;
             }
+            case R.id.link_to_quoted_status: {
+                final boolean newValue = !item.isChecked();
+                item.setChecked(newValue);
+                mPreferences.edit().putBoolean(KEY_LINK_TO_QUOTED_TWEET, newValue).apply();
+                break;
+            }
             default: {
                 final Intent intent = item.getIntent();
                 if (intent != null) {
                     try {
                         final String action = intent.getAction();
                         if (INTENT_ACTION_EXTENSION_COMPOSE.equals(action)) {
+                            final long[] accountIds = mAccountsAdapter.getSelectedAccountIds();
                             intent.putExtra(EXTRA_TEXT, ParseUtils.parseString(mEditText.getText()));
-                            intent.putExtra(EXTRA_ACCOUNT_IDS, mSendAccountIds);
-                            if (mSendAccountIds != null && mSendAccountIds.length > 0) {
-                                final long account_id = mSendAccountIds[0];
-                                intent.putExtra(EXTRA_NAME, getAccountName(this, account_id));
-                                intent.putExtra(EXTRA_SCREEN_NAME, getAccountScreenName(this, account_id));
+                            intent.putExtra(EXTRA_ACCOUNT_IDS, accountIds);
+                            if (accountIds.length > 0) {
+                                final long account_id = accountIds[0];
+                                intent.putExtra(EXTRA_NAME, Utils.getAccountName(this, account_id));
+                                intent.putExtra(EXTRA_SCREEN_NAME, Utils.getAccountScreenName(this, account_id));
                             }
                             if (mInReplyToStatusId > 0) {
                                 intent.putExtra(EXTRA_IN_REPLY_TO_ID, mInReplyToStatusId);
@@ -323,227 +505,12 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
     }
 
     @Override
-    public void onActivityResult(final int requestCode, final int resultCode, final Intent intent) {
-        switch (requestCode) {
-            case REQUEST_TAKE_PHOTO: {
-                if (resultCode == Activity.RESULT_OK) {
-                    mTask = new AddMediaTask(this, mTempPhotoUri, createTempImageUri(), ParcelableMedia.TYPE_IMAGE,
-                            true).execute();
-                    mTempPhotoUri = null;
-                }
-                break;
-            }
-            case REQUEST_PICK_IMAGE: {
-                if (resultCode == Activity.RESULT_OK) {
-                    final Uri src = intent.getData();
-                    mTask = new AddMediaTask(this, src, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false)
-                            .execute();
-                }
-                break;
-            }
-            case REQUEST_OPEN_DOCUMENT: {
-                if (resultCode == Activity.RESULT_OK) {
-                    final Uri src = intent.getData();
-                    mTask = new AddMediaTask(this, src, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false)
-                            .execute();
-                }
-                break;
-            }
-            case REQUEST_EDIT_IMAGE: {
-                if (resultCode == Activity.RESULT_OK) {
-                    final Uri uri = intent.getData();
-                    if (uri != null) {
-                    } else {
-                        break;
-                    }
-                    setMenu();
-                    updateTextCount();
-                }
-                break;
-            }
-            case REQUEST_EXTENSION_COMPOSE: {
-                if (resultCode == Activity.RESULT_OK) {
-                    final String text = intent.getStringExtra(EXTRA_TEXT);
-                    final String append = intent.getStringExtra(EXTRA_APPEND_TEXT);
-                    final Uri imageUri = intent.getParcelableExtra(EXTRA_IMAGE_URI);
-                    if (text != null) {
-                        mEditText.setText(text);
-                    } else if (append != null) {
-                        mEditText.append(append);
-                    }
-                    if (imageUri != null) {
-                    }
-                    setMenu();
-                    updateTextCount();
-                }
-                break;
-            }
-        }
-
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (mTask != null && mTask.getStatus() == AsyncTask.Status.RUNNING) return;
-        final String option = mPreferences.getString(KEY_COMPOSE_QUIT_ACTION, VALUE_COMPOSE_QUIT_ACTION_ASK);
-        final String text = mEditText != null ? ParseUtils.parseString(mEditText.getText()) : null;
-        final boolean textChanged = text != null && !text.isEmpty() && !text.equals(mOriginalText);
-        final boolean isEditingDraft = INTENT_ACTION_EDIT_DRAFT.equals(getIntent().getAction());
-        if (VALUE_COMPOSE_QUIT_ACTION_DISCARD.equals(option)) {
-            mTask = new DiscardTweetTask(this).execute();
-        } else if (textChanged || hasMedia() || isEditingDraft) {
-            if (VALUE_COMPOSE_QUIT_ACTION_SAVE.equals(option)) {
-                saveToDrafts();
-                Toast.makeText(this, R.string.status_saved_to_draft, Toast.LENGTH_SHORT).show();
-                finish();
-            } else {
-                new UnsavedTweetDialogFragment().show(getSupportFragmentManager(), "unsaved_tweet");
-            }
-        } else {
-            mTask = new DiscardTweetTask(this).execute();
-        }
-    }
-
-    @Override
-    public void onClick(final View view) {
-        switch (view.getId()) {
-            case R.id.close: {
-                onBackPressed();
-                break;
-            }
-            case R.id.send: {
-                if (isQuotingProtectedStatus()) {
-                    new RetweetProtectedStatusWarnFragment().show(getSupportFragmentManager(),
-                            "retweet_protected_status_warning_message");
-                } else {
-                    updateStatus();
-                }
-                break;
-            }
-        }
-    }
-
-    @Override
-    public void onContentChanged() {
-        super.onContentChanged();
-        findViewById(R.id.close).setOnClickListener(this);
-        mColorIndicator = (IColorLabelView) findViewById(R.id.accounts_color);
-        mEditText = (EditText) findViewById(R.id.edit_text);
-        mTitleView = (TextView) findViewById(R.id.actionbar_title);
-        mSubtitleView = (TextView) findViewById(R.id.actionbar_subtitle);
-        mMediasPreviewGrid = (GridView) findViewById(R.id.medias_thumbnail_preview);
-        mBottomMenuBar = (MenuBar) findViewById(R.id.bottom_menu);
-        mBottomMenuContainer = findViewById(R.id.bottom_menu_container);
-        mActionMenuBar = (MenuBar) findViewById(R.id.action_menu);
-        mProgress = (ProgressBar) findViewById(R.id.actionbar_progress_indeterminate);
-        mAccountSelectorDivider = findViewById(R.id.account_selector_divider);
-        mBottomSendDivider = findViewById(R.id.bottom_send_divider);
-        mAccountSelector = (Gallery) findViewById(R.id.account_selector);
-        final View composeActionBar = findViewById(R.id.compose_actionbar);
-        final View composeBottomBar = findViewById(R.id.compose_bottombar);
-        mSendView = composeActionBar.findViewById(R.id.send);
-        mBottomSendView = composeBottomBar.findViewById(R.id.send);
-        mSendTextCountView = (StatusTextCountView) mSendView.findViewById(R.id.status_text_count);
-        mBottomSendTextCountView = (StatusTextCountView) mBottomSendView.findViewById(R.id.status_text_count);
-        ViewAccessor.setBackground(findViewById(R.id.compose_content), getWindowContentOverlayForCompose(this));
-        ViewAccessor.setBackground(composeActionBar, getActionBarBackground(this, getCurrentThemeResourceId()));
-    }
-
-    @Override
-    public boolean onEditorAction(final TextView view, final int actionId, final KeyEvent event) {
-        if (event == null) return false;
-        switch (event.getKeyCode()) {
-            case KeyEvent.KEYCODE_ENTER: {
-                updateStatus();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Override
-    public void onItemClick(final AdapterView<?> parent, final View view, final int position, final long id) {
-        if (isSingleAccount()) return;
-        final boolean selected = !view.isActivated();
-        final Account account = mAccountSelectorAdapter.getItem(position);
-        mAccountSelectorAdapter.setAccountSelected(account.account_id, selected);
-        mSendAccountIds = mAccountSelectorAdapter.getSelectedAccountIds();
-        updateAccountSelection();
-    }
-
-    @Override
-    public boolean onItemLongClick(final AdapterView<?> parent, final View view, final int position, final long id) {
-        final Account account = mAccountSelectorAdapter.getItem(position);
-        final String displayName = getDisplayName(this, account.account_id, account.name, account.screen_name);
-        showMenuItemToast(view, displayName, true);
-        return true;
-    }
-
-    @Override
-    public void onLocationChanged(final Location location) {
-        if (mRecentLocation == null) {
-            mRecentLocation = location != null ? new ParcelableLocation(location) : null;
-            setProgressBarIndeterminateVisibility(false);
-        }
-    }
-
-    @Override
-    public boolean onLongClick(final View v) {
-        switch (v.getId()) {
-            case R.id.send: {
-                showMenuItemToast(v, getString(R.string.send), mBottomSendButton);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Override
-    public boolean onMenuItemClick(final MenuItem item) {
-        return handleMenuItem(item);
-    }
-
-    @Override
-    public void onProviderDisabled(final String provider) {
-        setProgressBarIndeterminateVisibility(false);
-    }
-
-    @Override
-    public void onProviderEnabled(final String provider) {
-    }
-
-    @Override
-    public void onSaveInstanceState(final Bundle outState) {
-        outState.putLongArray(EXTRA_ACCOUNT_IDS, mSendAccountIds);
-        outState.putParcelableArrayList(EXTRA_MEDIAS, new ArrayList<Parcelable>(getMediasList()));
-        outState.putBoolean(EXTRA_IS_POSSIBLY_SENSITIVE, mIsPossiblySensitive);
-        outState.putParcelable(EXTRA_STATUS, mInReplyToStatus);
-        outState.putLong(EXTRA_STATUS_ID, mInReplyToStatusId);
-        outState.putParcelable(EXTRA_USER, mMentionUser);
-        outState.putParcelable(EXTRA_DRAFT, mDraftItem);
-        outState.putBoolean(EXTRA_SHOULD_SAVE_ACCOUNTS, mShouldSaveAccounts);
-        outState.putString(EXTRA_ORIGINAL_TEXT, mOriginalText);
-        outState.putParcelable(EXTRA_TEMP_URI, mTempPhotoUri);
-        super.onSaveInstanceState(outState);
-    }
-
-    @Override
-    public void onStatusChanged(final String provider, final int status, final Bundle extras) {
-
-    }
-
-    @Override
-    public void onTextChanged(final CharSequence s, final int start, final int before, final int count) {
-        setMenu();
-        updateTextCount();
-    }
-
-    @Override
     public boolean onTouchEvent(final MotionEvent event) {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
-                getWindow().getDecorView().getHitRect(mWindowDecorHitRect);
-                if (!mWindowDecorHitRect.contains(Math.round(event.getX()), Math.round(event.getY()))) {
+                final Rect rect = new Rect();
+                getWindow().getDecorView().getHitRect(rect);
+                if (!rect.contains(Math.round(event.getX()), Math.round(event.getY()))) {
                     onBackPressed();
                     return true;
                 }
@@ -553,71 +520,120 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         return super.onTouchEvent(event);
     }
 
+    @Override
+    public void onContentChanged() {
+        super.onContentChanged();
+        mEditText = (ComposeEditText) findViewById(R.id.edit_text);
+        mMediaPreviewGrid = (GridView) findViewById(R.id.media_thumbnail_preview);
+        mMenuBar = (ActionMenuView) findViewById(R.id.menu_bar);
+        mSendView = findViewById(R.id.send);
+        mSendTextCountView = (StatusTextCountView) mSendView.findViewById(R.id.status_text_count);
+        mAccountSelector = (RecyclerView) findViewById(R.id.account_selector);
+        mAccountSelectorContainer = findViewById(R.id.account_selector_container);
+        mProfileImageView = (ShapedImageView) findViewById(R.id.account_profile_image);
+        mCountView = (BadgeView) findViewById(R.id.accounts_count);
+        mAccountSelectorButton = findViewById(R.id.account_selector_button);
+        mLocationContainer = findViewById(R.id.location_container);
+        mLocationIcon = (ActionIconView) findViewById(R.id.location_icon);
+        mLocationText = (TextView) findViewById(R.id.location_text);
+    }
+
+    @NonNull
+    @Override
+    public MenuInflater getMenuInflater() {
+        if (mMenuInflater == null) {
+            mMenuInflater = new SupportMenuInflater(this);
+        }
+        return mMenuInflater;
+    }
+
     public void removeAllMedia(final List<ParcelableMediaUpdate> list) {
         mMediaPreviewAdapter.removeAll(list);
-        updateMediasPreview();
+        updateMediaPreview();
     }
 
     public void saveToDrafts() {
         final String text = mEditText != null ? ParseUtils.parseString(mEditText.getText()) : null;
         final ParcelableStatusUpdate.Builder builder = new ParcelableStatusUpdate.Builder();
-        builder.accounts(Account.getAccounts(this, mSendAccountIds));
+        builder.accounts(ParcelableAccount.getAccounts(this, mAccountsAdapter.getSelectedAccountIds()));
         builder.text(text);
         builder.inReplyToStatusId(mInReplyToStatusId);
         builder.location(mRecentLocation);
         builder.isPossiblySensitive(mIsPossiblySensitive);
         if (hasMedia()) {
-            builder.medias(getMedias());
+            builder.media(getMedia());
         }
-        final ContentValues values = ContentValuesCreator.makeStatusDraftContentValues(builder.build());
-        mResolver.insert(Drafts.CONTENT_URI, values);
+        final ContentValues values = ContentValuesCreator.createStatusDraft(builder.build());
+        final Uri draftUri = mResolver.insert(Drafts.CONTENT_URI, values);
+        displayNewDraftNotification(text, draftUri);
+    }
+
+    public void setSelectedAccounts(ParcelableAccount... accounts) {
+        if (accounts.length == 1) {
+            mCountView.setText(null);
+            final ParcelableAccount account = accounts[0];
+            mImageLoader.displayProfileImage(mProfileImageView, account.profile_image_url);
+            mProfileImageView.setBorderColor(account.color);
+        } else {
+            mCountView.setText(String.valueOf(accounts.length));
+            mImageLoader.cancelDisplayTask(mProfileImageView);
+            mProfileImageView.setImageDrawable(null);
+            mProfileImageView.setBorderColors(Utils.getAccountColors(accounts));
+        }
+    }
+
+    @Override
+    public void onActionModeStarted(ActionMode mode) {
+        super.onActionModeStarted(mode);
+        ThemeUtils.applyColorFilterToMenuIcon(mode.getMenu(), ThemeUtils.getContrastActionBarItemColor(this),
+                0, 0, Mode.MULTIPLY);
     }
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
-        // requestWindowFeature(Window.FEATURE_INDETERMINATE_PROGRESS);
         super.onCreate(savedInstanceState);
         mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        mPreferences = SharedPreferencesWrapper.getInstance(this, SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
-        mBottomSendButton = mPreferences.getBoolean(KEY_BOTTOM_SEND_BUTTON, false);
-        mTwitterWrapper = getTwidereApplication().getTwitterWrapper();
         mResolver = getContentResolver();
         mValidator = new TwidereValidator(this);
-        setContentView(getLayoutInflater().inflate(R.layout.activity_compose, null));
-        setProgressBarIndeterminateVisibility(false);
+        setContentView(R.layout.activity_compose);
         setFinishOnTouchOutside(false);
-        mAccountIds = getAccountIds(this);
-        if (mAccountIds.length <= 0) {
+        final long[] defaultAccountIds = Utils.getAccountIds(this);
+        if (defaultAccountIds.length <= 0) {
             final Intent intent = new Intent(INTENT_ACTION_TWITTER_LOGIN);
             intent.setClass(this, SignInActivity.class);
             startActivity(intent);
             finish();
             return;
         }
-        mBottomMenuBar.setIsBottomBar(true);
-        mBottomMenuBar.setOnMenuItemClickListener(this);
-        mActionMenuBar.setOnMenuItemClickListener(this);
-        mEditText.setOnEditorActionListener(mPreferences.getBoolean(KEY_QUICK_SEND, false) ? this : null);
-        mEditText.addTextChangedListener(this);
-        mAccountSelectorAdapter = new AccountSelectorAdapter(this);
-        mAccountSelector.setAdapter(mAccountSelectorAdapter);
-        mAccountSelector.setOnItemClickListener(this);
-        mAccountSelector.setOnItemLongClickListener(this);
-        mAccountSelector.setScrollAfterItemClickEnabled(false);
-        mAccountSelector.setScrollRightSpacingEnabled(false);
+        mMenuBar.setOnMenuItemClickListener(this);
+        setupEditText();
+        mAccountSelectorContainer.setOnClickListener(this);
+        mAccountSelectorButton.setOnClickListener(this);
+        mLocationContainer.setOnClickListener(this);
+
+        final LinearLayoutManager linearLayoutManager = new FixedLinearLayoutManager(this);
+        linearLayoutManager.setOrientation(LinearLayoutManager.VERTICAL);
+        linearLayoutManager.setStackFromEnd(true);
+        mAccountSelector.setLayoutManager(linearLayoutManager);
+        mAccountSelector.addItemDecoration(new SpacingItemDecoration(this));
+        mAccountSelector.setItemAnimator(new DefaultItemAnimator());
+        mAccountsAdapter = new AccountIconsAdapter(this);
+        mAccountSelector.setAdapter(mAccountsAdapter);
+        mAccountsAdapter.setAccounts(ParcelableCredentials.getCredentialsArray(this, false, false));
 
         mMediaPreviewAdapter = new MediaPreviewAdapter(this);
-        mMediasPreviewGrid.setAdapter(mMediaPreviewAdapter);
+        mMediaPreviewGrid.setAdapter(mMediaPreviewAdapter);
 
         final Intent intent = getIntent();
 
+
         if (savedInstanceState != null) {
             // Restore from previous saved state
-            mSendAccountIds = savedInstanceState.getLongArray(EXTRA_ACCOUNT_IDS);
+            mAccountsAdapter.setSelectedAccountIds(savedInstanceState.getLongArray(EXTRA_ACCOUNT_IDS));
             mIsPossiblySensitive = savedInstanceState.getBoolean(EXTRA_IS_POSSIBLY_SENSITIVE);
-            final ArrayList<ParcelableMediaUpdate> mediasList = savedInstanceState.getParcelableArrayList(EXTRA_MEDIAS);
-            if (mediasList != null) {
-                addMedias(mediasList);
+            final ArrayList<ParcelableMediaUpdate> mediaList = savedInstanceState.getParcelableArrayList(EXTRA_MEDIA);
+            if (mediaList != null) {
+                addMedia(mediaList);
             }
             mInReplyToStatus = savedInstanceState.getParcelable(EXTRA_STATUS);
             mInReplyToStatusId = savedInstanceState.getLong(EXTRA_STATUS_ID);
@@ -625,9 +641,8 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
             mDraftItem = savedInstanceState.getParcelable(EXTRA_DRAFT);
             mShouldSaveAccounts = savedInstanceState.getBoolean(EXTRA_SHOULD_SAVE_ACCOUNTS);
             mOriginalText = savedInstanceState.getString(EXTRA_ORIGINAL_TEXT);
-            mTempPhotoUri = savedInstanceState.getParcelable(EXTRA_TEMP_URI);
         } else {
-            // The activity was first created
+            // The context was first created
             final int notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
             final long notificationAccount = intent.getLongExtra(EXTRA_NOTIFICATION_ACCOUNT, -1);
             if (notificationId != -1) {
@@ -636,11 +651,12 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
             if (!handleIntent(intent)) {
                 handleDefaultIntent(intent);
             }
-            if (mSendAccountIds == null || mSendAccountIds.length == 0) {
-                final long[] ids_in_prefs = ArrayUtils.parseLongArray(
+            final long[] accountIds = mAccountsAdapter.getSelectedAccountIds();
+            if (accountIds.length == 0) {
+                final long[] idsInPrefs = TwidereArrayUtils.parseLongArray(
                         mPreferences.getString(KEY_COMPOSE_ACCOUNTS, null), ',');
-                final long[] intersection = ArrayUtils.intersection(ids_in_prefs, mAccountIds);
-                mSendAccountIds = intersection.length > 0 ? intersection : mAccountIds;
+                final long[] intersection = TwidereArrayUtils.intersection(idsInPrefs, defaultAccountIds);
+                mAccountsAdapter.setSelectedAccountIds(intersection.length > 0 ? intersection : defaultAccountIds);
             }
             mOriginalText = ParseUtils.parseString(mEditText.getText());
         }
@@ -648,96 +664,147 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
             setTitle(R.string.compose);
         }
 
-        final boolean useBottomMenu = isSingleAccount() || !mBottomSendButton;
-        if (useBottomMenu) {
-            mBottomMenuBar.inflate(R.menu.menu_compose);
-        } else {
-            mActionMenuBar.inflate(R.menu.menu_compose);
-        }
-        mBottomMenuBar.setVisibility(useBottomMenu ? View.VISIBLE : View.GONE);
-        mActionMenuBar.setVisibility(useBottomMenu ? View.GONE : View.VISIBLE);
-        mSendView.setVisibility(mBottomSendButton ? View.GONE : View.VISIBLE);
-        mBottomSendDivider.setVisibility(mBottomSendButton ? View.VISIBLE : View.GONE);
-        mBottomSendView.setVisibility(mBottomSendButton ? View.VISIBLE : View.GONE);
+        final Menu menu = mMenuBar.getMenu();
+        getMenuInflater().inflate(R.menu.menu_compose, menu);
+        ThemeUtils.wrapMenuIcon(mMenuBar);
+
         mSendView.setOnClickListener(this);
-        mBottomSendView.setOnClickListener(this);
         mSendView.setOnLongClickListener(this);
-        mBottomSendView.setOnLongClickListener(this);
-        final Menu menu = mBottomMenuBar.getMenu(), actionBarMenu = mActionMenuBar.getMenu();
-        final Menu showingMenu = mBottomSendButton ? actionBarMenu : menu;
-        if (showingMenu != null) {
-            final Intent compose_extensions_intent = new Intent(INTENT_ACTION_EXTENSION_COMPOSE);
-            addIntentToMenu(this, showingMenu, compose_extensions_intent, MENU_GROUP_COMPOSE_EXTENSION);
-            final Intent image_extensions_intent = new Intent(INTENT_ACTION_EXTENSION_EDIT_IMAGE);
-            addIntentToMenu(this, showingMenu, image_extensions_intent, MENU_GROUP_IMAGE_EXTENSION);
+        final Intent composeExtensionsIntent = new Intent(INTENT_ACTION_EXTENSION_COMPOSE);
+        Utils.addIntentToMenu(this, menu, composeExtensionsIntent, MENU_GROUP_COMPOSE_EXTENSION);
+        final Intent imageExtensionsIntent = new Intent(INTENT_ACTION_EXTENSION_EDIT_IMAGE);
+        final MenuItem mediaMenuItem = menu.findItem(R.id.media_menu);
+        if (mediaMenuItem != null && mediaMenuItem.hasSubMenu()) {
+            Utils.addIntentToMenu(this, mediaMenuItem.getSubMenu(), imageExtensionsIntent, MENU_GROUP_IMAGE_EXTENSION);
         }
-        final LinearLayout.LayoutParams bottomMenuContainerParams = (LinearLayout.LayoutParams) mBottomMenuContainer
-                .getLayoutParams();
-        final LinearLayout.LayoutParams accountSelectorParams = (LinearLayout.LayoutParams) mAccountSelector
-                .getLayoutParams();
-        final int maxItemsShown;
-        final Resources res = getResources();
-        if (isSingleAccount()) {
-            accountSelectorParams.weight = 0;
-            accountSelectorParams.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-            bottomMenuContainerParams.weight = 1;
-            bottomMenuContainerParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            maxItemsShown = res.getInteger(R.integer.max_compose_menu_buttons_bottom_singleaccount);
-            mAccountSelectorDivider.setVisibility(View.VISIBLE);
-        } else {
-            accountSelectorParams.weight = 1;
-            accountSelectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            bottomMenuContainerParams.weight = 0;
-            bottomMenuContainerParams.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-            maxItemsShown = res.getInteger(R.integer.max_compose_menu_buttons_bottom);
-            mAccountSelectorDivider.setVisibility(mBottomSendButton ? View.GONE : View.VISIBLE);
-        }
-        mBottomMenuContainer.setLayoutParams(bottomMenuContainerParams);
-        mBottomMenuBar.setMaxItemsShown(maxItemsShown);
         setMenu();
-        updateAccountSelection();
-        updateMediasPreview();
+        updateLocationState();
+        updateMediaPreview();
+        notifyAccountSelectionChanged();
+
+        mTextChanged = false;
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
-        mImageUploaderUsed = !ServicePickerPreference.isNoneValue(mPreferences.getString(KEY_MEDIA_UPLOADER, null));
-        mStatusShortenerUsed = !ServicePickerPreference.isNoneValue(mPreferences.getString(KEY_STATUS_SHORTENER, null));
-        setMenu();
-        updateTextCount();
-        final int text_size = mPreferences.getInt(KEY_TEXT_SIZE, getDefaultTextSize(this));
-        mEditText.setTextSize(text_size * 1.25f);
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        final int keyCode = event.getKeyCode();
+        if (KeyEvent.isModifierKey(keyCode)) {
+            final int action = event.getAction();
+            if (action == MotionEvent.ACTION_DOWN) {
+                mKeyMetaState |= KeyboardShortcutsHandler.getMetaStateForKeyCode(keyCode);
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                mKeyMetaState &= ~KeyboardShortcutsHandler.getMetaStateForKeyCode(keyCode);
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
-    @Override
-    protected void onStop() {
-        if (mPopupMenu != null) {
-            mPopupMenu.dismiss();
-        }
-        mLocationManager.removeUpdates(this);
-        super.onStop();
+    private void setupEditText() {
+        final boolean sendByEnter = mPreferences.getBoolean(KEY_QUICK_SEND);
+        EditTextEnterHandler.attach(mEditText, new EnterListener() {
+            @Override
+            public boolean shouldCallListener() {
+                return mKeyMetaState == 0;
+            }
+
+            @Override
+            public boolean onHitEnter() {
+                confirmAndUpdateStatus();
+                return true;
+            }
+        }, sendByEnter);
+        mEditText.addTextChangedListener(new TextWatcher() {
+
+            @Override
+            public void beforeTextChanged(final CharSequence s, final int start, final int count, final int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(final CharSequence s, final int start, final int before, final int count) {
+                setMenu();
+                updateTextCount();
+                if (s instanceof Spannable && count == 1 && before == 0) {
+                    final ImageSpan[] imageSpans = ((Spannable) s).getSpans(start, start + count, ImageSpan.class);
+                    if (imageSpans.length == 1) {
+                        final Intent intent = ThemedImagePickerActivity.withThemed(ComposeActivity.this)
+                                .getImage(Uri.parse(imageSpans[0].getSource())).build();
+                        startActivityForResult(intent, REQUEST_PICK_IMAGE);
+                        ((Spannable) s).setSpan(new MarkForDeleteSpan(), start, start + count,
+                                Spanned.SPAN_INCLUSIVE_INCLUSIVE);
+                    }
+                }
+            }
+
+            @Override
+            public void afterTextChanged(final Editable s) {
+                mTextChanged = s.length() == 0;
+                final MarkForDeleteSpan[] deletes = s.getSpans(0, s.length(), MarkForDeleteSpan.class);
+                for (MarkForDeleteSpan delete : deletes) {
+                    s.delete(s.getSpanStart(delete), s.getSpanEnd(delete));
+                    s.removeSpan(delete);
+                }
+                for (Object span : s.getSpans(0, s.length(), CharacterStyle.class)) {
+                    if (span instanceof URLSpan) {
+                        s.removeSpan(span);
+                    } else if (span instanceof MetricAffectingSpan) {
+                        s.removeSpan(span);
+                    }
+                }
+            }
+        });
+        mEditText.setCustomSelectionActionModeCallback(this);
     }
 
     @Override
     protected void onTitleChanged(final CharSequence title, final int color) {
         super.onTitleChanged(title, color);
-        mTitleView.setText(title);
+    }
+
+    @Override
+    public boolean handleKeyboardShortcutSingle(@NonNull KeyboardShortcutsHandler handler, int keyCode, @NonNull KeyEvent event, int metaState) {
+        final String action = handler.getKeyAction(CONTEXT_TAG_NAVIGATION, keyCode, event, metaState);
+        if (ACTION_NAVIGATION_BACK.equals(action)) {
+            if (mEditText.length() == 0 && !mTextChanged) {
+                if (!mNavigateBackPressed) {
+                    final SuperToast toast = SuperToast.create(this, getString(R.string.press_again_to_close), Duration.SHORT);
+                    toast.setOnDismissListener(new OnDismissListener() {
+                        @Override
+                        public void onDismiss(View view) {
+                            mNavigateBackPressed = false;
+                        }
+                    });
+                    toast.show();
+                } else {
+                    onBackPressed();
+                }
+                mNavigateBackPressed = true;
+            } else {
+                mTextChanged = false;
+            }
+            return true;
+        }
+        return super.handleKeyboardShortcutSingle(handler, keyCode, event, metaState);
+    }
+
+    @Override
+    public boolean handleKeyboardShortcutRepeat(@NonNull KeyboardShortcutsHandler handler, int keyCode, int repeatCount, @NonNull KeyEvent event, int metaState) {
+        return super.handleKeyboardShortcutRepeat(handler, keyCode, repeatCount, event, metaState);
     }
 
     private void addMedia(final ParcelableMediaUpdate media) {
         mMediaPreviewAdapter.add(media);
-        updateMediasPreview();
+        updateMediaPreview();
     }
 
-    private void addMedias(final List<ParcelableMediaUpdate> medias) {
-        mMediaPreviewAdapter.addAll(medias);
-        updateMediasPreview();
+    private void addMedia(final List<ParcelableMediaUpdate> media) {
+        mMediaPreviewAdapter.addAll(media);
+        updateMediaPreview();
     }
 
     private void clearMedia() {
         mMediaPreviewAdapter.clear();
-        updateMediasPreview();
+        updateMediaPreview();
     }
 
     private Uri createTempImageUri() {
@@ -745,81 +812,70 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         return Uri.fromFile(file);
     }
 
-    /**
-     * The Location Manager manages location providers. This code searches for
-     * the best provider of data (GPS, WiFi/cell phone tower lookup, some other
-     * mechanism) and finds the last known location.
-     */
-    private boolean getLocation() {
-        final Criteria criteria = new Criteria();
-        criteria.setAccuracy(Criteria.ACCURACY_FINE);
-        final String provider = mLocationManager.getBestProvider(criteria, true);
-
-        if (provider != null) {
-            final Location location;
-            if (mLocationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                location = mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-            } else {
-                location = mLocationManager.getLastKnownLocation(provider);
-            }
-            if (location == null) {
-                mLocationManager.requestLocationUpdates(provider, 0, 0, this);
-                setProgressVisibility(true);
-            }
-            mRecentLocation = location != null ? new ParcelableLocation(location) : null;
-        } else {
-            Crouton.showText(this, R.string.cannot_get_location, CroutonStyle.ALERT);
-        }
-        return provider != null;
+    private void displayNewDraftNotification(String text, Uri draftUri) {
+        final ContentValues values = new ContentValues();
+        values.put(BaseColumns._ID, draftUri.getLastPathSegment());
+        getContentResolver().insert(Drafts.CONTENT_URI_NOTIFICATIONS, values);
     }
 
-    private ParcelableMediaUpdate[] getMedias() {
-        final List<ParcelableMediaUpdate> list = getMediasList();
+    private ParcelableMediaUpdate[] getMedia() {
+        final List<ParcelableMediaUpdate> list = getMediaList();
         return list.toArray(new ParcelableMediaUpdate[list.size()]);
     }
 
-    private List<ParcelableMediaUpdate> getMediasList() {
+    private List<ParcelableMediaUpdate> getMediaList() {
         return mMediaPreviewAdapter.getAsList();
     }
 
     private boolean handleDefaultIntent(final Intent intent) {
         if (intent == null) return false;
         final String action = intent.getAction();
-        mShouldSaveAccounts = !Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action);
+        final boolean hasAccountIds;
+        if (intent.hasExtra(EXTRA_ACCOUNT_IDS)) {
+            mAccountsAdapter.setSelectedAccountIds(intent.getLongArrayExtra(EXTRA_ACCOUNT_IDS));
+            hasAccountIds = true;
+        } else if (intent.hasExtra(EXTRA_ACCOUNT_ID)) {
+            mAccountsAdapter.setSelectedAccountIds(intent.getLongExtra(EXTRA_ACCOUNT_ID, -1));
+            hasAccountIds = true;
+        } else {
+            hasAccountIds = false;
+        }
+        mShouldSaveAccounts = !Intent.ACTION_SEND.equals(action)
+                && !Intent.ACTION_SEND_MULTIPLE.equals(action) && !hasAccountIds;
         final Uri data = intent.getData();
         final CharSequence extraSubject = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT);
         final CharSequence extraText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
         final Uri extraStream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
         //TODO handle share_screenshot extra (Bitmap)
         if (extraStream != null) {
-            new AddMediaTask(this, extraStream, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false).execute();
+            AsyncTaskUtils.executeTask(new AddMediaTask(this, extraStream, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false));
         } else if (data != null) {
-            new AddMediaTask(this, data, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false).execute();
-        } else if (intent.hasExtra(EXTRA_SHARE_SCREENSHOT)) {
+            AsyncTaskUtils.executeTask(new AddMediaTask(this, data, createTempImageUri(), ParcelableMedia.TYPE_IMAGE, false));
+        } else if (intent.hasExtra(EXTRA_SHARE_SCREENSHOT) && Utils.useShareScreenshot()) {
             final Bitmap bitmap = intent.getParcelableExtra(EXTRA_SHARE_SCREENSHOT);
             if (bitmap != null) {
                 try {
-                    new AddBitmapTask(this, bitmap, createTempImageUri(), ParcelableMedia.TYPE_IMAGE).execute();
+                    AsyncTaskUtils.executeTask(new AddBitmapTask(this, bitmap, createTempImageUri(), ParcelableMedia.TYPE_IMAGE));
                 } catch (IOException e) {
                     // ignore
                     bitmap.recycle();
                 }
             }
         }
-        mEditText.setText(getShareStatus(this, extraSubject, extraText));
-        final int selection_end = mEditText.length();
-        mEditText.setSelection(selection_end);
+        mEditText.setText(Utils.getShareStatus(this, extraSubject, extraText));
+        final int selectionEnd = mEditText.length();
+        mEditText.setSelection(selectionEnd);
         return true;
     }
 
     private boolean handleEditDraftIntent(final DraftItem draft) {
         if (draft == null) return false;
         mEditText.setText(draft.text);
-        final int selection_end = mEditText.length();
-        mEditText.setSelection(selection_end);
-        mSendAccountIds = draft.account_ids;
-        if (draft.medias != null) {
-            addMedias(Arrays.asList(draft.medias));
+        final int selectionEnd = mEditText.length();
+        mEditText.setSelection(selectionEnd);
+        mAccountsAdapter.setSelectedAccountIds(draft.account_ids);
+        if (draft.media != null) {
+            addMedia(Arrays.asList(draft.media));
         }
         mIsPossiblySensitive = draft.is_possibly_sensitive;
         mInReplyToStatusId = draft.in_reply_to_status_id;
@@ -828,30 +884,37 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
 
     private boolean handleIntent(final Intent intent) {
         final String action = intent.getAction();
+        if (action == null) return false;
         mShouldSaveAccounts = false;
         mMentionUser = intent.getParcelableExtra(EXTRA_USER);
         mInReplyToStatus = intent.getParcelableExtra(EXTRA_STATUS);
         mInReplyToStatusId = mInReplyToStatus != null ? mInReplyToStatus.id : -1;
-        if (INTENT_ACTION_REPLY.equals(action))
-            return handleReplyIntent(mInReplyToStatus);
-        else if (INTENT_ACTION_QUOTE.equals(action))
-            return handleQuoteIntent(mInReplyToStatus);
-        else if (INTENT_ACTION_EDIT_DRAFT.equals(action)) {
-            mDraftItem = intent.getParcelableExtra(EXTRA_DRAFT);
-            return handleEditDraftIntent(mDraftItem);
-        } else if (INTENT_ACTION_MENTION.equals(action))
-            return handleMentionIntent(mMentionUser);
-        else if (INTENT_ACTION_REPLY_MULTIPLE.equals(action)) {
-            final String[] screenNames = intent.getStringArrayExtra(EXTRA_SCREEN_NAMES);
-            final long accountId = intent.getLongExtra(EXTRA_ACCOUNT_ID, -1);
-            final long inReplyToUserId = intent.getLongExtra(EXTRA_IN_REPLY_TO_ID, -1);
-            return handleReplyMultipleIntent(screenNames, accountId, inReplyToUserId);
-        } else if (INTENT_ACTION_COMPOSE_TAKE_PHOTO.equals(action)) {
-            takePhoto();
-            return true;
-        } else if (INTENT_ACTION_COMPOSE_PICK_IMAGE.equals(action)) {
-            pickImage();
-            return true;
+        switch (action) {
+            case INTENT_ACTION_REPLY: {
+                return handleReplyIntent(mInReplyToStatus);
+            }
+            case INTENT_ACTION_QUOTE: {
+                return handleQuoteIntent(mInReplyToStatus);
+            }
+            case INTENT_ACTION_EDIT_DRAFT: {
+                mDraftItem = intent.getParcelableExtra(EXTRA_DRAFT);
+                return handleEditDraftIntent(mDraftItem);
+            }
+            case INTENT_ACTION_MENTION: {
+                return handleMentionIntent(mMentionUser);
+            }
+            case INTENT_ACTION_REPLY_MULTIPLE: {
+                final String[] screenNames = intent.getStringArrayExtra(EXTRA_SCREEN_NAMES);
+                final long accountId = intent.getLongExtra(EXTRA_ACCOUNT_ID, -1);
+                final long inReplyToUserId = intent.getLongExtra(EXTRA_IN_REPLY_TO_ID, -1);
+                return handleReplyMultipleIntent(screenNames, accountId, inReplyToUserId);
+            }
+            case INTENT_ACTION_COMPOSE_TAKE_PHOTO: {
+                return takePhoto();
+            }
+            case INTENT_ACTION_COMPOSE_PICK_IMAGE: {
+                return pickImage();
+            }
         }
         // Unknown action or no intent extras
         return false;
@@ -859,52 +922,56 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
 
     private boolean handleMentionIntent(final ParcelableUser user) {
         if (user == null || user.id <= 0) return false;
-        final String my_screen_name = getAccountScreenName(this, user.account_id);
-        if (isEmpty(my_screen_name)) return false;
+        final String my_screen_name = Utils.getAccountScreenName(this, user.account_id);
+        if (TextUtils.isEmpty(my_screen_name)) return false;
         mEditText.setText("@" + user.screen_name + " ");
         final int selection_end = mEditText.length();
         mEditText.setSelection(selection_end);
-        mSendAccountIds = new long[]{user.account_id};
+        mAccountsAdapter.setSelectedAccountIds(user.account_id);
         return true;
     }
 
     private boolean handleQuoteIntent(final ParcelableStatus status) {
         if (status == null || status.id <= 0) return false;
-        mEditText.setText(getQuoteStatus(this, status.user_screen_name, status.text_plain));
+        mEditText.setText(Utils.getQuoteStatus(this, status.id, status.user_screen_name, status.text_plain));
         mEditText.setSelection(0);
-        mSendAccountIds = new long[]{status.account_id};
+        mAccountsAdapter.setSelectedAccountIds(status.account_id);
         return true;
     }
 
     private boolean handleReplyIntent(final ParcelableStatus status) {
         if (status == null || status.id <= 0) return false;
-        final String myScreenName = getAccountScreenName(this, status.account_id);
-        if (isEmpty(myScreenName)) return false;
+        final String myScreenName = Utils.getAccountScreenName(this, status.account_id);
+        if (TextUtils.isEmpty(myScreenName)) return false;
+        int selectionStart = 0;
         mEditText.append("@" + status.user_screen_name + " ");
-        final int selectionStart = mEditText.length();
-        if (!isEmpty(status.retweeted_by_screen_name)) {
-            mEditText.append("@" + status.retweeted_by_screen_name + " ");
+        // If replying status from current user, just exclude it's screen name from selection.
+        if (status.account_id != status.user_id) {
+            selectionStart = mEditText.length();
         }
-        final Collection<String> mentions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
+        if (status.is_retweet) {
+            mEditText.append("@" + status.retweeted_by_user_screen_name + " ");
+        }
+        final Collection<String> mentions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         mentions.addAll(mExtractor.extractMentionedScreennames(status.text_plain));
         for (final String mention : mentions) {
             if (mention.equalsIgnoreCase(status.user_screen_name) || mention.equalsIgnoreCase(myScreenName)
-                    || mention.equalsIgnoreCase(status.retweeted_by_screen_name)) {
+                    || mention.equalsIgnoreCase(status.retweeted_by_user_screen_name)) {
                 continue;
             }
             mEditText.append("@" + mention + " ");
         }
         final int selectionEnd = mEditText.length();
         mEditText.setSelection(selectionStart, selectionEnd);
-        mSendAccountIds = new long[]{status.account_id};
+        mAccountsAdapter.setSelectedAccountIds(status.account_id);
         return true;
     }
 
     private boolean handleReplyMultipleIntent(final String[] screenNames, final long accountId,
                                               final long inReplyToStatusId) {
         if (screenNames == null || screenNames.length == 0 || accountId <= 0) return false;
-        final String myScreenName = getAccountScreenName(this, accountId);
-        if (isEmpty(myScreenName)) return false;
+        final String myScreenName = Utils.getAccountScreenName(this, accountId);
+        if (TextUtils.isEmpty(myScreenName)) return false;
         for (final String screenName : screenNames) {
             if (screenName.equalsIgnoreCase(myScreenName)) {
                 continue;
@@ -912,7 +979,7 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
             mEditText.append("@" + screenName + " ");
         }
         mEditText.setSelection(mEditText.length());
-        mSendAccountIds = new long[]{accountId};
+        mAccountsAdapter.setSelectedAccountIds(accountId);
         mInReplyToStatusId = inReplyToStatusId;
         return true;
     }
@@ -921,14 +988,13 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         return !mMediaPreviewAdapter.isEmpty();
     }
 
-    private boolean isQuotingProtectedStatus() {
-        if (INTENT_ACTION_QUOTE.equals(getIntent().getAction()) && mInReplyToStatus != null)
-            return mInReplyToStatus.user_is_protected && mInReplyToStatus.account_id != mInReplyToStatus.user_id;
-        return false;
+    private boolean isQuote() {
+        return INTENT_ACTION_QUOTE.equals(getIntent().getAction());
     }
 
-    private boolean isSingleAccount() {
-        return mAccountIds != null && mAccountIds.length == 1;
+    private boolean isQuotingProtectedStatus() {
+        if (!isQuote() || mInReplyToStatus == null) return false;
+        return mInReplyToStatus.user_is_protected && mInReplyToStatus.account_id != mInReplyToStatus.user_id;
     }
 
     private boolean noReplyContent(final String text) {
@@ -938,93 +1004,52 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         return is_reply && text.equals(mOriginalText);
     }
 
-    @TargetApi(Build.VERSION_CODES.KITKAT)
-    private boolean openDocument() {
-        final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        final String[] mimeTypes = {"image/png", "image/jpeg", "image/gif"};
-        intent.setType("image/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try {
-            startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
-        } catch (final ActivityNotFoundException e) {
-            return false;
-        }
+    private void notifyAccountSelectionChanged() {
+        final ParcelableAccount[] accounts = mAccountsAdapter.getSelectedAccounts();
+        setSelectedAccounts(accounts);
+        mEditText.setAccountId(accounts.length > 0 ? accounts[0].account_id : Utils.getDefaultAccountId(this));
+        setMenu();
+//        mAccountActionProvider.setSelectedAccounts(mAccountsAdapter.getSelectedAccounts());
+    }
+
+    private boolean pickImage() {
+        final Intent intent = ThemedImagePickerActivity.withThemed(this).pickImage().build();
+        startActivityForResult(intent, REQUEST_PICK_IMAGE);
         return true;
     }
 
-    private void pickImage() {
-        final Intent intent = new Intent(Intent.ACTION_PICK);
-        intent.setType("image/*");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try {
-            startActivityForResult(intent, REQUEST_PICK_IMAGE);
-        } catch (final ActivityNotFoundException e) {
-            showErrorMessage(this, null, e, false);
-        }
+    private void saveAccountSelection() {
+        if (!mShouldSaveAccounts) return;
+        final SharedPreferences.Editor editor = mPreferences.edit();
+        editor.putString(KEY_COMPOSE_ACCOUNTS, TwidereArrayUtils.toString(mAccountsAdapter.getSelectedAccountIds(), ',', false));
+        editor.apply();
     }
 
-    private void setCommonMenu(final Menu menu) {
-        final boolean hasMedia = hasMedia();
-        // final MenuItem itemAddImageSubmenu =
-        // menu.findItem(R.id.add_image_submenu);
-        // if (itemAddImageSubmenu != null) {
-        // final Drawable iconAddImage = itemAddImageSubmenu.getIcon();
-        // iconAddImage.mutate();
-        // if (hasMedia) {
-        // iconAddImage.setColorFilter(activatedColor, Mode.SRC_ATOP);
-        // } else {
-        // iconAddImage.clearColorFilter();
-        // }
-        // }
-        final MenuItem itemAttachLocation = menu.findItem(MENU_ADD_LOCATION);
-        if (itemAttachLocation != null) {
-            final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
-            if (attachLocation && getLocation()) {
-                itemAttachLocation.setChecked(true);
-            } else {
-                setProgressVisibility(false);
-                mPreferences.edit().putBoolean(KEY_ATTACH_LOCATION, false).commit();
-                itemAttachLocation.setChecked(false);
-            }
-        }
-        final MenuItem viewItem = menu.findItem(MENU_VIEW);
-        if (viewItem != null) {
-            viewItem.setVisible(mInReplyToStatus != null);
-        }
-        menu.setGroupEnabled(MENU_GROUP_IMAGE_EXTENSION, hasMedia);
-        menu.setGroupVisible(MENU_GROUP_IMAGE_EXTENSION, hasMedia);
-        final MenuItem itemToggleSensitive = menu.findItem(MENU_TOGGLE_SENSITIVE);
-        if (itemToggleSensitive != null) {
-            itemToggleSensitive.setVisible(hasMedia);
-            itemToggleSensitive.setEnabled(hasMedia);
-            itemToggleSensitive.setChecked(hasMedia && mIsPossiblySensitive);
-        }
+    private void setAccountSelectorVisible(boolean visible) {
+        mAccountSelectorContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     private boolean setComposeTitle(final Intent intent) {
         final String action = intent.getAction();
+        final boolean nameFirst = mPreferences.getBoolean(KEY_NAME_FIRST);
         if (INTENT_ACTION_REPLY.equals(action)) {
             if (mInReplyToStatus == null) return false;
-            final String display_name = getDisplayName(this, mInReplyToStatus.user_id, mInReplyToStatus.user_name,
-                    mInReplyToStatus.user_screen_name);
-            setTitle(getString(R.string.reply_to, display_name));
+            final String displayName = mUserColorNameManager.getDisplayName(mInReplyToStatus.user_id, mInReplyToStatus.user_name,
+                    mInReplyToStatus.user_screen_name, nameFirst, false);
+            setTitle(getString(R.string.reply_to, displayName));
         } else if (INTENT_ACTION_QUOTE.equals(action)) {
             if (mInReplyToStatus == null) return false;
-            final String display_name = getDisplayName(this, mInReplyToStatus.user_id, mInReplyToStatus.user_name,
-                    mInReplyToStatus.user_screen_name);
-            setTitle(getString(R.string.quote_user, display_name));
-            mSubtitleView.setVisibility(mInReplyToStatus.user_is_protected
-                    && mInReplyToStatus.account_id != mInReplyToStatus.user_id ? View.VISIBLE : View.GONE);
+            final String displayName = mUserColorNameManager.getDisplayName(mInReplyToStatus.user_id, mInReplyToStatus.user_name,
+                    mInReplyToStatus.user_screen_name, nameFirst, false);
+            setTitle(getString(R.string.quote_user, displayName));
         } else if (INTENT_ACTION_EDIT_DRAFT.equals(action)) {
             if (mDraftItem == null) return false;
             setTitle(R.string.edit_draft);
         } else if (INTENT_ACTION_MENTION.equals(action)) {
             if (mMentionUser == null) return false;
-            final String display_name = getDisplayName(this, mMentionUser.id, mMentionUser.name,
-                    mMentionUser.screen_name);
-            setTitle(getString(R.string.mention_user, display_name));
+            final String displayName = mUserColorNameManager.getDisplayName(mMentionUser.id, mMentionUser.name,
+                    mMentionUser.screen_name, nameFirst, false);
+            setTitle(getString(R.string.mention_user, displayName));
         } else if (INTENT_ACTION_REPLY_MULTIPLE.equals(action)) {
             setTitle(R.string.reply);
         } else if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
@@ -1036,52 +1061,188 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
     }
 
     private void setMenu() {
-        if (mBottomMenuBar == null || mActionMenuBar == null) return;
-        final Menu bottomMenu = mBottomMenuBar.getMenu(), actionMenu = mActionMenuBar.getMenu();
-        setCommonMenu(bottomMenu);
-        setCommonMenu(actionMenu);
-        mActionMenuBar.show();
-        mBottomMenuBar.show();
+        if (mMenuBar == null) return;
+        final Menu menu = mMenuBar.getMenu();
+        final boolean hasMedia = hasMedia(), hasInReplyTo = mInReplyToStatus != null;
+
+        /*
+         * No media & Not reply: [Take photo][Add image][Attach location][Drafts]
+         * Has media & Not reply: [Take photo][Media menu][Attach location][Drafts]
+         * Is reply: [Media menu][View status][Attach location][Drafts]
+         */
+        MenuUtils.setMenuItemAvailability(menu, R.id.take_photo, !hasInReplyTo);
+        MenuUtils.setMenuItemAvailability(menu, R.id.take_photo_sub_item, hasInReplyTo);
+        MenuUtils.setMenuItemAvailability(menu, R.id.add_image, !hasMedia && !hasInReplyTo);
+        MenuUtils.setMenuItemAvailability(menu, R.id.view, hasInReplyTo);
+        MenuUtils.setMenuItemAvailability(menu, R.id.media_menu, hasMedia || hasInReplyTo);
+        MenuUtils.setMenuItemAvailability(menu, R.id.toggle_sensitive, hasMedia);
+        MenuUtils.setMenuItemAvailability(menu, R.id.edit_media, hasMedia);
+        MenuUtils.setMenuItemAvailability(menu, R.id.link_to_quoted_status, isQuote());
+        MenuUtils.setMenuItemAvailability(menu, R.id.schedule, isScheduleSupported());
+
+        menu.setGroupEnabled(MENU_GROUP_IMAGE_EXTENSION, hasMedia);
+        menu.setGroupVisible(MENU_GROUP_IMAGE_EXTENSION, hasMedia);
+        MenuUtils.setMenuItemChecked(menu, R.id.toggle_sensitive, hasMedia && mIsPossiblySensitive);
+        MenuUtils.setMenuItemChecked(menu, R.id.link_to_quoted_status, mPreferences.getBoolean(KEY_LINK_TO_QUOTED_TWEET));
+        ThemeUtils.resetCheatSheet(mMenuBar);
+//        mMenuBar.show();
     }
 
-    private void setProgressVisibility(final boolean visible) {
-        mProgress.setVisibility(visible ? View.VISIBLE : View.GONE);
+    private boolean isScheduleSupported() {
+        for (ParcelableCredentials account : mAccountsAdapter.getSelectedAccounts()) {
+            if (TwitterContentUtils.getOfficialKeyType(this, account.consumer_key, account.consumer_secret)
+                    != ConsumerKeyType.TWEETDECK) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    private void takePhoto() {
-        final Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-            final File cache_dir = getExternalCacheDir();
-            final File file = new File(cache_dir, "tmp_photo_" + System.currentTimeMillis());
-            mTempPhotoUri = Uri.fromFile(file);
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, mTempPhotoUri);
-            try {
-                startActivityForResult(intent, REQUEST_TAKE_PHOTO);
-            } catch (final ActivityNotFoundException e) {
-                showErrorMessage(this, null, e, false);
+    private void setProgressVisible(final boolean visible) {
+        mSetProgressVisibleRunnable = new SetProgressVisibleRunnable(this, visible);
+        if (mFragmentResumed) {
+            runOnUiThread(mSetProgressVisibleRunnable);
+            mSetProgressVisibleRunnable = null;
+        }
+    }
+
+    @Override
+    protected void onResumeFragments() {
+        super.onResumeFragments();
+        mFragmentResumed = true;
+        if (mSetProgressVisibleRunnable != null) {
+            runOnUiThread(mSetProgressVisibleRunnable);
+            mSetProgressVisibleRunnable = null;
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mFragmentResumed = false;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (PermissionUtils.getPermission(permissions, grantResults, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                PermissionUtils.getPermission(permissions, grantResults, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdateIfEnabled();
+        } else {
+            Toast.makeText(this, R.string.cannot_get_location, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static class SetProgressVisibleRunnable implements Runnable {
+
+        private final ComposeActivity activity;
+        private final boolean visible;
+
+        SetProgressVisibleRunnable(ComposeActivity activity, boolean visible) {
+            this.activity = activity;
+            this.visible = visible;
+        }
+
+        @Override
+        public void run() {
+            final FragmentManager fm = activity.getSupportFragmentManager();
+            final Fragment f = fm.findFragmentByTag(DISCARD_STATUS_DIALOG_FRAGMENT_TAG);
+            if (!visible && f instanceof DialogFragment) {
+                ((DialogFragment) f).dismiss();
+            } else if (visible) {
+                SupportProgressDialogFragment df = new SupportProgressDialogFragment();
+                df.show(fm, DISCARD_STATUS_DIALOG_FRAGMENT_TAG);
+                df.setCancelable(false);
             }
         }
     }
 
-    private void updateAccountSelection() {
-        if (mSendAccountIds == null) return;
-        if (mShouldSaveAccounts) {
-            final SharedPreferences.Editor editor = mPreferences.edit();
-            editor.putString(KEY_COMPOSE_ACCOUNTS, ArrayUtils.toString(mSendAccountIds, ',', false));
-            editor.commit();
+    private void setRecentLocation(ParcelableLocation location) {
+        if (location != null) {
+            mLocationText.setText(location.getHumanReadableString(3));
+        } else {
+            mLocationText.setText(R.string.unknown_location);
         }
-        mAccountSelectorAdapter.clearAccountSelection();
-        for (final long accountId : mSendAccountIds) {
-            mAccountSelectorAdapter.setAccountSelected(accountId, true);
-        }
-        mColorIndicator.drawEnd(getAccountColors(this, mSendAccountIds));
+        mRecentLocation = location;
     }
 
-    private void updateMediasPreview() {
+    /**
+     * The Location Manager manages location providers. This code searches for
+     * the best provider of data (GPS, WiFi/cell phone tower lookup, some other
+     * mechanism) and finds the last known location.
+     */
+    private boolean startLocationUpdateIfEnabled() {
+        final LocationManager lm = mLocationManager;
+        try {
+            lm.removeUpdates(this);
+        } catch (SecurityException ignore) {
+        }
+        final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION);
+        if (!attachLocation) {
+            return false;
+        }
+        final Criteria criteria = new Criteria();
+        criteria.setAccuracy(Criteria.ACCURACY_FINE);
+        final String provider = lm.getBestProvider(criteria, true);
+        if (provider != null) {
+            try {
+                mLocationText.setText(R.string.getting_location);
+                lm.requestLocationUpdates(provider, 0, 0, this);
+                final Location location = Utils.getCachedLocation(this);
+                if (location != null) {
+                    onLocationChanged(location);
+                }
+            } catch (SecurityException e) {
+                return false;
+            }
+        } else {
+            Toast.makeText(this, R.string.cannot_get_location, Toast.LENGTH_SHORT).show();
+        }
+        return provider != null;
+    }
+
+    private boolean takePhoto() {
+        final Intent intent = ThemedImagePickerActivity.withThemed(this).takePhoto().build();
+        startActivityForResult(intent, REQUEST_TAKE_PHOTO);
+        return true;
+    }
+
+    private void toggleLocation() {
+        final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
+        mPreferences.edit().putBoolean(KEY_ATTACH_LOCATION, !attachLocation).apply();
+        requestOrUpdateLocation();
+        updateLocationState();
+        setMenu();
+        updateTextCount();
+    }
+
+    private void requestOrUpdateLocation() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdateIfEnabled();
+        } else {
+            final String[] permissions = {Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION};
+            ActivityCompat.requestPermissions(this, permissions, REQUEST_REQUEST_PERMISSIONS);
+        }
+    }
+
+    private void updateLocationState() {
+        final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
+        if (attachLocation) {
+            mLocationIcon.setColorFilter(ThemeUtils.getOptimalAccentColor(this, false,
+                    getCurrentThemeResourceId()), Mode.SRC_ATOP);
+        } else {
+            mLocationIcon.setColorFilter(mLocationIcon.getDefaultColor(), Mode.SRC_ATOP);
+            mLocationText.setText(R.string.no_location);
+        }
+    }
+
+    private void updateMediaPreview() {
         final int count = mMediaPreviewAdapter.getCount();
         final Resources res = getResources();
         final int maxColumns = res.getInteger(R.integer.grid_column_image_preview);
-        mMediasPreviewGrid.setNumColumns(MathUtils.clamp(count, maxColumns, 1));
+        mMediaPreviewGrid.setNumColumns(MathUtils.clamp(count, maxColumns, 1));
     }
 
     private void updateStatus() {
@@ -1091,35 +1252,29 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         final int tweetLength = mValidator.getTweetLength(text), maxLength = mValidator.getMaxTweetLength();
         if (!mStatusShortenerUsed && tweetLength > maxLength) {
             mEditText.setError(getString(R.string.error_message_status_too_long));
-            final int text_length = mEditText.length();
-            mEditText.setSelection(text_length - (tweetLength - maxLength), text_length);
+            final int textLength = mEditText.length();
+            mEditText.setSelection(textLength - (tweetLength - maxLength), textLength);
             return;
-        } else if (!hasMedia && (isEmpty(text) || noReplyContent(text))) {
+        } else if (!hasMedia && (TextUtils.isEmpty(text) || noReplyContent(text))) {
             mEditText.setError(getString(R.string.error_message_no_content));
             return;
+        } else if (mAccountsAdapter.isSelectionEmpty()) {
+            mEditText.setError(getString(R.string.no_account_selected));
+            return;
         }
-        final boolean attach_location = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
-        if (mRecentLocation == null && attach_location) {
-            final Location location;
-            if (mLocationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                location = mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-            } else {
-                location = null;
-            }
-            mRecentLocation = location != null ? new ParcelableLocation(location) : null;
-        }
-        final boolean isQuote = INTENT_ACTION_QUOTE.equals(getIntent().getAction());
-        final ParcelableLocation statusLocation = attach_location ? mRecentLocation : null;
+        final boolean attachLocation = mPreferences.getBoolean(KEY_ATTACH_LOCATION, false);
+        final long[] accountIds = mAccountsAdapter.getSelectedAccountIds();
+        final boolean isQuote = isQuote();
+        final ParcelableLocation statusLocation = attachLocation ? mRecentLocation : null;
         final boolean linkToQuotedTweet = mPreferences.getBoolean(KEY_LINK_TO_QUOTED_TWEET, true);
         final long inReplyToStatusId = !isQuote || linkToQuotedTweet ? mInReplyToStatusId : -1;
         final boolean isPossiblySensitive = hasMedia && mIsPossiblySensitive;
-        mTwitterWrapper.updateStatusAsync(mSendAccountIds, text, statusLocation, getMedias(), inReplyToStatusId,
+        mTwitterWrapper.updateStatusAsync(accountIds, text, statusLocation, getMedia(), inReplyToStatusId,
                 isPossiblySensitive);
         if (mPreferences.getBoolean(KEY_NO_CLOSE_AFTER_TWEET_SENT, false)
                 && (mInReplyToStatus == null || mInReplyToStatusId <= 0)) {
             mIsPossiblySensitive = false;
             mShouldSaveAccounts = true;
-            mTempPhotoUri = null;
             mInReplyToStatus = null;
             mMentionUser = null;
             mDraftItem = null;
@@ -1140,14 +1295,340 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
     }
 
     private void updateTextCount() {
-        final StatusTextCountView textCountView = mBottomSendButton ? mBottomSendTextCountView : mSendTextCountView;
-        if (textCountView != null && mEditText != null) {
-            final String textOrig = mEditText != null ? parseString(mEditText.getText()) : null;
-            final String text = hasMedia() && textOrig != null ? mImageUploaderUsed ? getImageUploadStatus(this,
-                    new String[]{FAKE_IMAGE_LINK}, textOrig) : textOrig + " " + FAKE_IMAGE_LINK : textOrig;
-            final int validatedCount = text != null ? mValidator.getTweetLength(text) : 0;
-            textCountView.setTextCount(validatedCount);
+        if (mSendTextCountView == null || mEditText == null) return;
+        final String textOrig = ParseUtils.parseString(mEditText.getText());
+        final String text = hasMedia() && textOrig != null ? mImageUploaderUsed ? Utils.getImageUploadStatus(this,
+                new String[]{FAKE_IMAGE_LINK}, textOrig) : textOrig + " " + FAKE_IMAGE_LINK : textOrig;
+        final int validatedCount = text != null ? mValidator.getTweetLength(text) : 0;
+        mSendTextCountView.setTextCount(validatedCount);
+    }
+
+    static class AccountIconViewHolder extends ViewHolder implements OnClickListener {
+
+        private final AccountIconsAdapter adapter;
+        private final ShapedImageView iconView;
+        private final TextView nameView;
+
+        public AccountIconViewHolder(AccountIconsAdapter adapter, View itemView) {
+            super(itemView);
+            this.adapter = adapter;
+            iconView = (ShapedImageView) itemView.findViewById(android.R.id.icon);
+            nameView = (TextView) itemView.findViewById(android.R.id.text1);
+            itemView.setOnClickListener(this);
         }
+
+        public void showAccount(AccountIconsAdapter adapter, ParcelableAccount account, boolean isSelected) {
+            itemView.setAlpha(isSelected ? 1 : 0.33f);
+            final MediaLoaderWrapper loader = adapter.getImageLoader();
+            loader.displayProfileImage(iconView, account.profile_image_url);
+            iconView.setBorderColor(account.color);
+            nameView.setText(adapter.isNameFirst() ? account.name : ("@" + account.screen_name));
+        }
+
+        @Override
+        public void onClick(View v) {
+            adapter.toggleSelection(getAdapterPosition());
+        }
+
+
+    }
+
+    private static class AccountIconsAdapter extends BaseRecyclerViewAdapter<AccountIconViewHolder> {
+
+        private final ComposeActivity mActivity;
+        private final LayoutInflater mInflater;
+        private final LongSparseArray<Boolean> mSelection;
+        private final boolean mNameFirst;
+
+        private ParcelableCredentials[] mAccounts;
+
+        public AccountIconsAdapter(ComposeActivity activity) {
+            super(activity);
+            setHasStableIds(true);
+            mActivity = activity;
+            mInflater = activity.getLayoutInflater();
+            mSelection = new LongSparseArray<>();
+            mNameFirst = mPreferences.getBoolean(KEY_NAME_FIRST);
+        }
+
+        public MediaLoaderWrapper getImageLoader() {
+            return mMediaLoader;
+        }
+
+        @NonNull
+        public long[] getSelectedAccountIds() {
+            if (mAccounts == null) return new long[0];
+            final long[] temp = new long[mAccounts.length];
+            int selectedCount = 0;
+            for (ParcelableAccount account : mAccounts) {
+                if (mSelection.get(account.account_id, false)) {
+                    temp[selectedCount++] = account.account_id;
+                }
+            }
+            final long[] result = new long[selectedCount];
+            System.arraycopy(temp, 0, result, 0, result.length);
+            return result;
+        }
+
+        public void setSelectedAccountIds(long... accountIds) {
+            mSelection.clear();
+            if (accountIds != null) {
+                for (long accountId : accountIds) {
+                    mSelection.put(accountId, true);
+                }
+            }
+            notifyDataSetChanged();
+        }
+
+        @NonNull
+        public ParcelableCredentials[] getSelectedAccounts() {
+            if (mAccounts == null) return new ParcelableCredentials[0];
+            final ParcelableCredentials[] temp = new ParcelableCredentials[mAccounts.length];
+            int selectedCount = 0;
+            for (ParcelableCredentials account : mAccounts) {
+                if (mSelection.get(account.account_id, false)) {
+                    temp[selectedCount++] = account;
+                }
+            }
+            final ParcelableCredentials[] result = new ParcelableCredentials[selectedCount];
+            System.arraycopy(temp, 0, result, 0, result.length);
+            return result;
+        }
+
+        public boolean isSelectionEmpty() {
+            return getSelectedAccountIds().length == 0;
+        }
+
+        @Override
+        public AccountIconViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            final View view = mInflater.inflate(R.layout.adapter_item_compose_account, parent, false);
+            return new AccountIconViewHolder(this, view);
+        }
+
+        @Override
+        public void onBindViewHolder(AccountIconViewHolder holder, int position) {
+            final ParcelableAccount account = mAccounts[position];
+            final boolean isSelected = mSelection.get(account.account_id, false);
+            holder.showAccount(this, account, isSelected);
+        }
+
+        @Override
+        public int getItemCount() {
+            return mAccounts != null ? mAccounts.length : 0;
+        }
+
+        public void setAccounts(ParcelableCredentials[] accounts) {
+            mAccounts = accounts;
+            notifyDataSetChanged();
+        }
+
+        private void toggleSelection(int position) {
+            if (mAccounts == null) return;
+            final long accountId = mAccounts[position].account_id;
+            mSelection.put(accountId, !mSelection.get(accountId, false));
+            mActivity.notifyAccountSelectionChanged();
+            notifyDataSetChanged();
+        }
+
+        public boolean isNameFirst() {
+            return mNameFirst;
+        }
+    }
+
+    private static class AddBitmapTask extends AddMediaTask {
+
+        private final Bitmap mBitmap;
+
+        AddBitmapTask(ComposeActivity activity, Bitmap bitmap, Uri dst, int media_type) throws IOException {
+            super(activity, Uri.fromFile(File.createTempFile("tmp_bitmap", null)), dst, media_type,
+                    true);
+            mBitmap = bitmap;
+        }
+
+        @Override
+        protected Boolean doInBackground(Object... params) {
+            if (mBitmap == null || mBitmap.isRecycled()) return false;
+            FileOutputStream os = null;
+            try {
+                os = new FileOutputStream(getSrc().getPath());
+                mBitmap.compress(Bitmap.CompressFormat.PNG, 0, os);
+                mBitmap.recycle();
+            } catch (IOException e) {
+                return false;
+            } finally {
+                IoUtils.closeSilently(os);
+            }
+            return super.doInBackground(params);
+        }
+
+    }
+
+    private static class AddMediaTask extends AsyncTask<Object, Object, Boolean> {
+
+        private final ComposeActivity activity;
+        private final int media_type;
+        private final Uri src, dst;
+        private final boolean delete_src;
+
+        AddMediaTask(final ComposeActivity activity, final Uri src, final Uri dst, final int media_type,
+                     final boolean delete_src) {
+            this.activity = activity;
+            this.src = src;
+            this.dst = dst;
+            this.media_type = media_type;
+            this.delete_src = delete_src;
+        }
+
+        @Override
+        protected Boolean doInBackground(final Object... params) {
+            InputStream is = null;
+            OutputStream os = null;
+            try {
+                final ContentResolver resolver = activity.getContentResolver();
+                is = resolver.openInputStream(src);
+                os = resolver.openOutputStream(dst);
+                Utils.copyStream(is, os);
+                if (ContentResolver.SCHEME_FILE.equals(src.getScheme()) && delete_src) {
+                    final File file = new File(src.getPath());
+                    if (!file.delete()) {
+                        Log.d(LOGTAG, String.format("Unable to delete %s", file));
+                    }
+                }
+            } catch (final IOException e) {
+                Log.w(LOGTAG, e);
+                return false;
+            } finally {
+                Utils.closeSilently(os);
+                Utils.closeSilently(is);
+            }
+            return true;
+        }
+
+        Uri getSrc() {
+            return src;
+        }
+
+        @Override
+        protected void onPostExecute(final Boolean result) {
+            activity.setProgressVisible(false);
+            activity.addMedia(new ParcelableMediaUpdate(dst.toString(), media_type));
+            activity.setMenu();
+            activity.updateTextCount();
+            if (!result) {
+                Toast.makeText(activity, R.string.error_occurred, Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        @Override
+        protected void onPreExecute() {
+            activity.setProgressVisible(true);
+        }
+    }
+
+    private static class DeleteImageTask extends AsyncTask<Object, Object, Boolean> {
+
+        final ComposeActivity mActivity;
+        private final ParcelableMediaUpdate[] mMedia;
+
+        DeleteImageTask(final ComposeActivity activity, final ParcelableMediaUpdate... media) {
+            this.mActivity = activity;
+            this.mMedia = media;
+        }
+
+        @Override
+        protected Boolean doInBackground(final Object... params) {
+            if (mMedia == null) return false;
+            try {
+                for (final ParcelableMediaUpdate media : mMedia) {
+                    if (media.uri == null) continue;
+                    final Uri uri = Uri.parse(media.uri);
+                    if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
+                        final File file = new File(uri.getPath());
+                        if (!file.delete()) {
+                            Log.d(LOGTAG, String.format("Unable to delete %s", file));
+                        }
+                    }
+                }
+            } catch (final Exception e) {
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        protected void onPostExecute(final Boolean result) {
+            mActivity.setProgressVisible(false);
+            mActivity.removeAllMedia(Arrays.asList(mMedia));
+            mActivity.setMenu();
+            if (!result) {
+                Toast.makeText(mActivity, R.string.error_occurred, Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        @Override
+        protected void onPreExecute() {
+            mActivity.setProgressVisible(true);
+        }
+    }
+
+    private static class DiscardTweetTask extends AsyncTask<Object, Object, Object> {
+
+        final ComposeActivity mActivity;
+
+        DiscardTweetTask(final ComposeActivity activity) {
+            this.mActivity = activity;
+        }
+
+        @Override
+        protected Object doInBackground(final Object... params) {
+            for (final ParcelableMediaUpdate media : mActivity.getMediaList()) {
+                if (media.uri == null) continue;
+                final Uri uri = Uri.parse(media.uri);
+                if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
+                    final File file = new File(uri.getPath());
+                    if (!file.delete()) {
+                        Log.d(LOGTAG, String.format("Unable to delete %s", file));
+                    }
+                }
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(final Object result) {
+            mActivity.setProgressVisible(false);
+            mActivity.finish();
+        }
+
+        @Override
+        protected void onPreExecute() {
+            mActivity.setProgressVisible(true);
+        }
+    }
+
+    private static class MediaPreviewAdapter extends DraggableArrayAdapter<ParcelableMediaUpdate> {
+
+        private final MediaLoaderWrapper mImageLoader;
+
+        public MediaPreviewAdapter(final ComposeActivity activity) {
+            super(activity, R.layout.grid_item_media_editor);
+            mImageLoader = activity.mImageLoader;
+        }
+
+        public List<ParcelableMediaUpdate> getAsList() {
+            return Collections.unmodifiableList(getObjects());
+        }
+
+        @Override
+        public View getView(final int position, final View convertView, final ViewGroup parent) {
+            final View view = super.getView(position, convertView, parent);
+            final ParcelableMediaUpdate media = getItem(position);
+            final ImageView image = (ImageView) view.findViewById(R.id.image);
+            mImageLoader.displayPreviewImage(media.uri, image);
+            return view;
+        }
+
+
     }
 
     public static class RetweetProtectedStatusWarnFragment extends BaseSupportDialogFragment implements
@@ -1167,6 +1648,7 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
 
         }
 
+        @NonNull
         @Override
         public Dialog onCreateDialog(final Bundle savedInstanceState) {
             final Context wrapped = ThemeUtils.getDialogThemedContext(getActivity());
@@ -1178,350 +1660,27 @@ public class ComposeActivity extends BaseSupportDialogActivity implements TextWa
         }
     }
 
-    public static class UnsavedTweetDialogFragment extends BaseSupportDialogFragment implements
-            DialogInterface.OnClickListener {
+    private static class SpacingItemDecoration extends ItemDecoration {
 
-        @Override
-        public void onClick(final DialogInterface dialog, final int which) {
-            final Activity activity = getActivity();
-            switch (which) {
-                case DialogInterface.BUTTON_POSITIVE: {
-                    if (activity instanceof ComposeActivity) {
-                        ((ComposeActivity) activity).saveToDrafts();
-                    }
-                    activity.finish();
-                    break;
-                }
-                case DialogInterface.BUTTON_NEGATIVE: {
-                    if (activity instanceof ComposeActivity) {
-                        new DiscardTweetTask((ComposeActivity) activity).execute();
-                    } else {
-                        activity.finish();
-                    }
-                    break;
-                }
-            }
+        private final int mSpacingSmall, mSpacingNormal;
 
+        SpacingItemDecoration(Context context) {
+            final Resources resources = context.getResources();
+            mSpacingSmall = resources.getDimensionPixelSize(R.dimen.element_spacing_small);
+            mSpacingNormal = resources.getDimensionPixelSize(R.dimen.element_spacing_normal);
         }
 
         @Override
-        public Dialog onCreateDialog(final Bundle savedInstanceState) {
-            final Context wrapped = ThemeUtils.getDialogThemedContext(getActivity());
-            final AlertDialog.Builder builder = new AlertDialog.Builder(wrapped);
-            builder.setMessage(R.string.unsaved_status);
-            builder.setPositiveButton(R.string.save, this);
-            builder.setNegativeButton(R.string.discard, this);
-            return builder.create();
-        }
-    }
-
-    public static class ViewStatusDialogFragment extends BaseSupportDialogFragment {
-
-        private StatusViewHolder mHolder;
-
-        public ViewStatusDialogFragment() {
-            setStyle(STYLE_NO_TITLE, 0);
-        }
-
-        @Override
-        public void onActivityCreated(final Bundle savedInstanceState) {
-            super.onActivityCreated(savedInstanceState);
-            final Bundle args = getArguments();
-            if (args == null || args.getParcelable(EXTRA_STATUS) == null) {
-                dismiss();
-                return;
-            }
-            final TwidereApplication application = getApplication();
-            final ImageLoaderWrapper loader = application.getImageLoaderWrapper();
-            final SharedPreferences prefs = getSharedPreferences(SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-            final ParcelableStatus status = args.getParcelable(EXTRA_STATUS);
-            mHolder.setShowAsGap(false);
-            mHolder.setAccountColorEnabled(true);
-            mHolder.setTextSize(prefs.getInt(KEY_TEXT_SIZE, getDefaultTextSize(getActivity())));
-            ((View) mHolder.content).setPadding(0, 0, 0, 0);
-            mHolder.content.setItemBackground(null);
-            mHolder.content.setItemSelector(null);
-            mHolder.text.setText(status.text_unescaped);
-            mHolder.name.setText(status.user_name);
-            mHolder.screen_name.setText("@" + status.user_screen_name);
-            mHolder.screen_name.setVisibility(View.VISIBLE);
-
-            final String retweeted_by_name = status.retweeted_by_name;
-            final String retweeted_by_screen_name = status.retweeted_by_screen_name;
-
-            final boolean is_my_status = status.account_id == status.user_id;
-            final boolean hasMedia = status.medias != null && status.medias.length > 0;
-            mHolder.setUserColor(getUserColor(getActivity(), status.user_id, true));
-            mHolder.setHighlightColor(getCardHighlightColor(false, status.is_favorite, status.is_retweet));
-
-            mHolder.setIsMyStatus(is_my_status && !prefs.getBoolean(KEY_INDICATE_MY_STATUS, true));
-
-            mHolder.name.setCompoundDrawablesWithIntrinsicBounds(0, 0,
-                    getUserTypeIconRes(status.user_is_verified, status.user_is_protected), 0);
-            mHolder.time.setTime(status.timestamp);
-            final int type_icon = getStatusTypeIconRes(status.is_favorite, isValidLocation(status.location), hasMedia,
-                    status.is_possibly_sensitive);
-            mHolder.time.setCompoundDrawablesWithIntrinsicBounds(0, 0, type_icon, 0);
-            mHolder.reply_retweet_status
-                    .setVisibility(status.in_reply_to_status_id != -1 || status.is_retweet ? View.VISIBLE : View.GONE);
-            if (status.is_retweet && !TextUtils.isEmpty(retweeted_by_name)
-                    && !TextUtils.isEmpty(retweeted_by_screen_name)) {
-                if (!prefs.getBoolean(KEY_NAME_FIRST, true)) {
-                    mHolder.reply_retweet_status.setText(status.retweet_count > 1 ? getString(
-                            R.string.retweeted_by_with_count, retweeted_by_screen_name, status.retweet_count - 1)
-                            : getString(R.string.retweeted_by, retweeted_by_screen_name));
-                } else {
-                    mHolder.reply_retweet_status.setText(status.retweet_count > 1 ? getString(
-                            R.string.retweeted_by_with_count, retweeted_by_name, status.retweet_count - 1) : getString(
-                            R.string.retweeted_by, retweeted_by_name));
-                }
-                mHolder.reply_retweet_status.setText(status.retweet_count > 1 ? getString(
-                        R.string.retweeted_by_with_count, retweeted_by_name, status.retweet_count - 1) : getString(
-                        R.string.retweeted_by, retweeted_by_name));
-                mHolder.reply_retweet_status.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_indicator_retweet,
-                        0, 0, 0);
-            } else if (status.in_reply_to_status_id > 0 && !TextUtils.isEmpty(status.in_reply_to_screen_name)) {
-                mHolder.reply_retweet_status.setText(getString(R.string.in_reply_to, status.in_reply_to_screen_name));
-                mHolder.reply_retweet_status.setCompoundDrawablesWithIntrinsicBounds(
-                        R.drawable.ic_indicator_conversation, 0, 0, 0);
-            }
-            if (prefs.getBoolean(KEY_DISPLAY_PROFILE_IMAGE, true)) {
-                loader.displayProfileImage(mHolder.my_profile_image, status.user_profile_image_url);
-                loader.displayProfileImage(mHolder.profile_image, status.user_profile_image_url);
+        public void getItemOffsets(Rect outRect, View view, RecyclerView parent, State state) {
+            final int pos = parent.getChildAdapterPosition(view);
+            if (pos == 0) {
+                outRect.set(0, mSpacingNormal, 0, 0);
+            } else if (pos == parent.getAdapter().getItemCount() - 1) {
+                outRect.set(0, 0, 0, mSpacingNormal);
             } else {
-                mHolder.profile_image.setVisibility(View.GONE);
-                mHolder.my_profile_image.setVisibility(View.GONE);
+                outRect.set(0, 0, 0, 0);
             }
-            mHolder.image_preview_container.setVisibility(View.GONE);
-        }
-
-        @Override
-        public View onCreateView(final LayoutInflater inflater, final ViewGroup parent, final Bundle savedInstanceState) {
-            final ScrollView view = (ScrollView) inflater.inflate(R.layout.dialog_scrollable_status, parent, false);
-            mHolder = new StatusViewHolder(view.getChildAt(0));
-            return view;
-        }
-
-    }
-
-    private static class AccountSelectorAdapter extends BaseArrayAdapter<Account> {
-
-        private final LongSparseArray<Boolean> mAccountSelectStates = new LongSparseArray<Boolean>();
-
-        public AccountSelectorAdapter(final Context context) {
-            super(context, R.layout.gallery_item_compose_account, Account.getAccountsList(context, false));
-        }
-
-        public void clearAccountSelection() {
-            mAccountSelectStates.clear();
-            notifyDataSetChanged();
-        }
-
-        public long[] getSelectedAccountIds() {
-            final ArrayList<Long> list = new ArrayList<Long>();
-            for (int i = 0, j = getCount(); i < j; i++) {
-                final Account account = getItem(i);
-                if (mAccountSelectStates.get(account.account_id, false)) {
-                    list.add(account.account_id);
-                }
-            }
-            return ArrayUtils.fromList(list);
-        }
-
-        @Override
-        public View getView(final int position, final View convertView, final ViewGroup parent) {
-            final View view = super.getView(position, convertView, parent);
-            final Account account = getItem(position);
-            final ImageLoaderWrapper loader = getImageLoader();
-            final ImageView icon = (ImageView) view.findViewById(android.R.id.icon);
-            loader.displayProfileImage(icon, account.profile_image_url);
-            view.setActivated(mAccountSelectStates.get(account.account_id, false));
-            return view;
-        }
-
-        public void setAccountSelected(final long accountId, final boolean selected) {
-            mAccountSelectStates.put(accountId, selected);
-            notifyDataSetChanged();
-        }
-
-    }
-
-    private static class AddBitmapTask extends AddMediaTask {
-
-        private final Bitmap mBitmap;
-
-        AddBitmapTask(ComposeActivity activity, Bitmap bitmap, Uri dst, int media_type) throws IOException {
-            super(activity, Uri.fromFile(File.createTempFile("tmp_bitmap", null)), dst, media_type,
-                    true);
-            mBitmap = bitmap;
-        }
-
-        @Override
-        protected Boolean doInBackground(Void... params) {
-            if (mBitmap == null || mBitmap.isRecycled()) return false;
-            FileOutputStream os = null;
-            try {
-                os = new FileOutputStream(getSrc().getPath());
-                mBitmap.compress(Bitmap.CompressFormat.PNG, 0, os);
-                mBitmap.recycle();
-            } catch (IOException e) {
-                return false;
-            } finally {
-                IoUtils.closeSilently(os);
-            }
-            return super.doInBackground(params);
-        }
-
-    }
-
-    private static class AddMediaTask extends AsyncTask<Void, Void, Boolean> {
-
-        private final ComposeActivity activity;
-        private final int media_type;
-        private final Uri src, dst;
-        private final boolean delete_src;
-
-        Uri getSrc() {
-            return src;
-        }
-
-        AddMediaTask(final ComposeActivity activity, final Uri src, final Uri dst, final int media_type,
-                     final boolean delete_src) {
-            this.activity = activity;
-            this.src = src;
-            this.dst = dst;
-            this.media_type = media_type;
-            this.delete_src = delete_src;
-        }
-
-        @Override
-        protected Boolean doInBackground(final Void... params) {
-            try {
-                final ContentResolver resolver = activity.getContentResolver();
-                final InputStream is = resolver.openInputStream(src);
-                final OutputStream os = resolver.openOutputStream(dst);
-                copyStream(is, os);
-                os.close();
-                if (ContentResolver.SCHEME_FILE.equals(src.getScheme()) && delete_src) {
-                    new File(src.getPath()).delete();
-                }
-            } catch (final Exception e) {
-                return false;
-            }
-            return true;
-        }
-
-        @Override
-        protected void onPostExecute(final Boolean result) {
-            activity.setProgressVisibility(false);
-            activity.addMedia(new ParcelableMediaUpdate(dst.toString(), media_type));
-            activity.setMenu();
-            activity.updateTextCount();
-            if (!result) {
-                Crouton.showText(activity, R.string.error_occurred, CroutonStyle.ALERT);
-            }
-        }
-
-        @Override
-        protected void onPreExecute() {
-            activity.setProgressVisibility(true);
         }
     }
 
-    private static class DeleteImageTask extends AsyncTask<Void, Void, Boolean> {
-
-        final ComposeActivity activity;
-        private final ParcelableMediaUpdate[] medias;
-
-        DeleteImageTask(final ComposeActivity activity, final ParcelableMediaUpdate... medias) {
-            this.activity = activity;
-            this.medias = medias;
-        }
-
-        @Override
-        protected Boolean doInBackground(final Void... params) {
-            if (medias == null) return false;
-            try {
-                for (final ParcelableMediaUpdate media : medias) {
-                    final Uri target = Uri.parse(media.uri);
-                    if (ContentResolver.SCHEME_FILE.equals(target.getScheme())) {
-                        new File(target.getPath()).delete();
-                    }
-                }
-            } catch (final Exception e) {
-                return false;
-            }
-            return true;
-        }
-
-        @Override
-        protected void onPostExecute(final Boolean result) {
-            activity.setProgressVisibility(false);
-            activity.removeAllMedia(Arrays.asList(medias));
-            activity.setMenu();
-            if (!result) {
-                Crouton.showText(activity, R.string.error_occurred, CroutonStyle.ALERT);
-            }
-        }
-
-        @Override
-        protected void onPreExecute() {
-            activity.setProgressVisibility(true);
-        }
-    }
-
-    private static class DiscardTweetTask extends AsyncTask<Void, Void, Void> {
-
-        final ComposeActivity activity;
-
-        DiscardTweetTask(final ComposeActivity activity) {
-            this.activity = activity;
-        }
-
-        @Override
-        protected Void doInBackground(final Void... params) {
-            try {
-                for (final ParcelableMediaUpdate media : activity.getMediasList()) {
-                    final Uri uri = Uri.parse(media.uri);
-                    if (uri == null) return null;
-                    if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
-                        new File(uri.getPath()).delete();
-                    }
-                }
-            } catch (final Exception e) {
-            }
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(final Void result) {
-            activity.setProgressVisibility(false);
-            activity.finish();
-        }
-
-        @Override
-        protected void onPreExecute() {
-            activity.setProgressVisibility(true);
-        }
-    }
-
-    private static class MediaPreviewAdapter extends DraggableArrayAdapter<ParcelableMediaUpdate> {
-
-        private final ImageLoaderWrapper mImageLoader;
-
-        public MediaPreviewAdapter(final Context context) {
-            super(context, R.layout.grid_item_media_editor);
-            mImageLoader = TwidereApplication.getInstance(context).getImageLoaderWrapper();
-        }
-
-        @Override
-        public View getView(final int position, final View convertView, final ViewGroup parent) {
-            final View view = super.getView(position, convertView, parent);
-            final ParcelableMediaUpdate media = getItem(position);
-            final ImageView image = (ImageView) view.findViewById(R.id.image);
-            mImageLoader.displayPreviewImage(image, media.uri);
-            return view;
-        }
-
-    }
 }

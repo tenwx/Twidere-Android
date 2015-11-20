@@ -19,6 +19,7 @@
 
 package org.mariotaku.twidere.view;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
@@ -26,6 +27,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -33,143 +35,163 @@ import org.mariotaku.twidere.view.iface.IForegroundView;
 
 public class ForegroundColorView extends View implements IForegroundView {
 
-	private final ForegroundViewHelper mForegroundViewHelper;
+    private final ForegroundViewHelper mForegroundViewHelper;
 
-	private final Rect mAlphaRect, mColorRect;
-	private final Paint mPaint;
+    private final Rect mAlphaRect, mColorRect;
+    private final Paint mPaint;
+    private final int mAlphaPatternSize;
+    private boolean mAlphaPattern;
+    private int mNumRectanglesHorizontal;
+    private int mNumRectanglesVertical;
 
-	private boolean mAlphaPattern;
+    public ForegroundColorView(final Context context) {
+        this(context, null);
+    }
 
-	private int mNumRectanglesHorizontal;
+    public ForegroundColorView(final Context context, final AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
 
-	private int mNumRectanglesVertical;
+    public ForegroundColorView(final Context context, final AttributeSet attrs, final int defStyle) {
+        super(context, attrs, defStyle);
+        mForegroundViewHelper = new ForegroundViewHelper(this, context, attrs, defStyle);
+        mAlphaPatternSize = Math.round(getResources().getDisplayMetrics().density * 4);
+        mAlphaRect = new Rect();
+        mColorRect = new Rect();
+        mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final TypedArray a = context.obtainStyledAttributes(attrs, new int[]{android.R.attr.color});
+        setColor(a.getColor(0, Color.TRANSPARENT));
+        a.recycle();
+    }
 
-	private final int mAlphaPatternSize;
+    public int getColor() {
+        return mPaint.getColor();
+    }
 
-	public ForegroundColorView(final Context context) {
-		this(context, null);
-	}
+    public void setColor(final int color) {
+        mPaint.setColor(color);
+        invalidate();
+    }
 
-	public ForegroundColorView(final Context context, final AttributeSet attrs) {
-		this(context, attrs, 0);
-	}
+    @Override
+    public Drawable getForeground() {
+        if (mForegroundViewHelper != null) {
+            return mForegroundViewHelper.getForeground();
+        }
+        return null;
+    }
 
-	public ForegroundColorView(final Context context, final AttributeSet attrs, final int defStyle) {
-		super(context, attrs, defStyle);
-		mForegroundViewHelper = new ForegroundViewHelper(this, context, attrs, defStyle);
-		mAlphaPatternSize = Math.round(getResources().getDisplayMetrics().density * 4);
-		mAlphaRect = new Rect();
-		mColorRect = new Rect();
-		mPaint = new Paint();
-		final TypedArray a = context.obtainStyledAttributes(attrs, new int[] { android.R.attr.color });
-		setColor(a.getColor(0, Color.TRANSPARENT));
-		a.recycle();
-	}
+    /**
+     * Supply a Drawable that is to be rendered on top of all of the child views
+     * in the frame layout. Any padding in the Drawable will be taken into
+     * account by ensuring that the children are inset to be placed inside of
+     * the padding area.
+     *
+     * @param drawable The Drawable to be drawn on top of the children.
+     * @attr ref android.R.styleable#FrameLayout_foreground
+     */
+    @Override
+    public void setForeground(final Drawable drawable) {
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.setForeground(drawable);
+        }
+    }
 
-	public int getColor() {
-		return mPaint.getColor();
-	}
+    /**
+     * Describes how the foreground is positioned. Defaults to START and TOP.
+     *
+     * @param foregroundGravity See {@link android.view.Gravity}
+     * @attr ref android.R.styleable#FrameLayout_foregroundGravity
+     */
+    @Override
+    public void setForegroundGravity(final int foregroundGravity) {
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.setForegroundGravity(foregroundGravity);
+        }
+    }
 
-	@Override
-	public Drawable getForeground() {
-		return mForegroundViewHelper.getForeground();
-	}
+    public void setAlphaPatternEnable(final boolean alphaPattern) {
+        if (mAlphaPattern == alphaPattern) return;
+        mAlphaPattern = alphaPattern;
+        invalidate();
+    }
 
-	@Override
-	public void jumpDrawablesToCurrentState() {
-		super.jumpDrawablesToCurrentState();
-		mForegroundViewHelper.jumpDrawablesToCurrentState();
-	}
+    @Override
+    protected void onSizeChanged(final int w, final int h, final int oldw, final int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.dispatchOnSizeChanged(w, h, oldw, oldh);
+        }
+        mColorRect.set(getPaddingLeft(), getPaddingTop(), w - getPaddingRight(), h - getPaddingBottom());
+        mNumRectanglesHorizontal = (int) Math.ceil(w / mAlphaPatternSize);
+        mNumRectanglesVertical = (int) Math.ceil(h / mAlphaPatternSize);
+    }
 
-	public void setAlphaPatternEnable(final boolean alphaPattern) {
-		if (mAlphaPattern == alphaPattern) return;
-		mAlphaPattern = alphaPattern;
-		invalidate();
-	}
+    @Override
+    protected void onDraw(final Canvas canvas) {
+        drawAlphaPattern(canvas);
+        canvas.drawRect(mColorRect, mPaint);
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.dispatchOnDraw(canvas);
+        }
+    }
 
-	public void setColor(final int color) {
-		mPaint.setColor(color);
-		invalidate();
-	}
+    @Override
+    protected void onLayout(final boolean changed, final int left, final int top, final int right, final int bottom) {
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.dispatchOnLayout(changed, left, top, right, bottom);
+        }
+        super.onLayout(changed, left, top, right, bottom);
+    }
 
-	/**
-	 * Supply a Drawable that is to be rendered on top of all of the child views
-	 * in the frame layout. Any padding in the Drawable will be taken into
-	 * account by ensuring that the children are inset to be placed inside of
-	 * the padding area.
-	 * 
-	 * @param drawable The Drawable to be drawn on top of the children.
-	 * 
-	 * @attr ref android.R.styleable#FrameLayout_foreground
-	 */
-	@Override
-	public void setForeground(final Drawable drawable) {
-		mForegroundViewHelper.setForeground(drawable);
-	}
+    @Override
+    protected boolean verifyDrawable(final Drawable who) {
+        return super.verifyDrawable(who) || (mForegroundViewHelper != null && mForegroundViewHelper.verifyDrawable(who));
+    }
 
-	/**
-	 * Describes how the foreground is positioned. Defaults to START and TOP.
-	 * 
-	 * @param foregroundGravity See {@link android.view.Gravity}
-	 * 
-	 * @attr ref android.R.styleable#FrameLayout_foregroundGravity
-	 */
-	@Override
-	public void setForegroundGravity(final int foregroundGravity) {
-		mForegroundViewHelper.setForegroundGravity(foregroundGravity);
-	}
+    @Override
+    protected void drawableStateChanged() {
+        super.drawableStateChanged();
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.drawableStateChanged();
+        }
+    }
 
-	@Override
-	protected void drawableStateChanged() {
-		super.drawableStateChanged();
-		mForegroundViewHelper.drawableStateChanged();
-	}
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    @Override
+    public void drawableHotspotChanged(float x, float y) {
+        super.drawableHotspotChanged(x, y);
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.dispatchDrawableHotspotChanged(x, y);
+        }
+    }
 
-	@Override
-	protected void onDraw(final Canvas canvas) {
-		drawAlphaPattern(canvas);
-		canvas.drawRect(mColorRect, mPaint);
-		mForegroundViewHelper.dispatchOnDraw(canvas);
-	}
+    @Override
+    public void jumpDrawablesToCurrentState() {
+        super.jumpDrawablesToCurrentState();
+        if (mForegroundViewHelper != null) {
+            mForegroundViewHelper.jumpDrawablesToCurrentState();
+        }
+    }
 
-	@Override
-	protected void onLayout(final boolean changed, final int left, final int top, final int right, final int bottom) {
-		mForegroundViewHelper.dispatchOnLayout(changed, left, top, right, bottom);
-		super.onLayout(changed, left, top, right, bottom);
-	}
+    private void drawAlphaPattern(final Canvas canvas) {
+        if (!mAlphaPattern) return;
+        boolean verticalStartWhite = true;
+        for (int i = 0; i <= mNumRectanglesVertical; i++) {
+            boolean horizontalStartWhite = verticalStartWhite;
+            for (int j = 0; j <= mNumRectanglesHorizontal; j++) {
+                mAlphaRect.top = i * mAlphaPatternSize + getTop();
+                mAlphaRect.left = j * mAlphaPatternSize + getLeft();
+                mAlphaRect.bottom = Math.min(mAlphaRect.top + mAlphaPatternSize, getBottom());
+                mAlphaRect.right = Math.min(mAlphaRect.left + mAlphaPatternSize, getRight());
 
-	@Override
-	protected void onSizeChanged(final int w, final int h, final int oldw, final int oldh) {
-		super.onSizeChanged(w, h, oldw, oldh);
-		mForegroundViewHelper.dispatchOnSizeChanged(w, h, oldw, oldh);
-		mColorRect.set(getPaddingLeft(), getPaddingTop(), w - getPaddingRight(), h - getPaddingBottom());
-		mNumRectanglesHorizontal = (int) Math.ceil(w / mAlphaPatternSize);
-		mNumRectanglesVertical = (int) Math.ceil(h / mAlphaPatternSize);
-	}
+                mPaint.setColor(horizontalStartWhite ? Color.WHITE : Color.GRAY);
+                canvas.drawRect(mAlphaRect, mPaint);
 
-	@Override
-	protected boolean verifyDrawable(final Drawable who) {
-		return super.verifyDrawable(who) || mForegroundViewHelper.verifyDrawable(who);
-	}
-
-	private void drawAlphaPattern(final Canvas canvas) {
-		if (!mAlphaPattern) return;
-		boolean verticalStartWhite = true;
-		for (int i = 0; i <= mNumRectanglesVertical; i++) {
-			boolean horizontalStartWhite = verticalStartWhite;
-			for (int j = 0; j <= mNumRectanglesHorizontal; j++) {
-				mAlphaRect.top = i * mAlphaPatternSize + getTop();
-				mAlphaRect.left = j * mAlphaPatternSize + getLeft();
-				mAlphaRect.bottom = Math.min(mAlphaRect.top + mAlphaPatternSize, getBottom());
-				mAlphaRect.right = Math.min(mAlphaRect.left + mAlphaPatternSize, getRight());
-
-				mPaint.setColor(horizontalStartWhite ? Color.WHITE : Color.GRAY);
-				canvas.drawRect(mAlphaRect, mPaint);
-
-				horizontalStartWhite = !horizontalStartWhite;
-			}
-			verticalStartWhite = !verticalStartWhite;
-		}
-	}
+                horizontalStartWhite = !horizontalStartWhite;
+            }
+            verticalStartWhite = !verticalStartWhite;
+        }
+    }
 
 }

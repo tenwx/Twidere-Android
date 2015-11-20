@@ -23,12 +23,8 @@ import android.support.v4.app.Fragment;
 
 public interface SupportFragmentCallback {
 
-	public Fragment getCurrentVisibleFragment();
+	Fragment getCurrentVisibleFragment();
 
-	public void onDetachFragment(Fragment fragment);
-
-	public void onSetUserVisibleHint(Fragment fragment, boolean isVisibleToUser);
-
-	public boolean triggerRefresh(int position);
+	boolean triggerRefresh(int position);
 
 }

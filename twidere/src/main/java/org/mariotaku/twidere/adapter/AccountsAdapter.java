@@ -24,101 +24,166 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ListView;
-import android.widget.SimpleCursorAdapter;
+import android.widget.CompoundButton;
+
+import com.mobeta.android.dslv.SimpleDragSortCursorAdapter;
 
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.app.TwidereApplication;
-import org.mariotaku.twidere.provider.TweetStore.Accounts;
-import org.mariotaku.twidere.util.ImageLoaderWrapper;
+import org.mariotaku.twidere.adapter.iface.IBaseAdapter;
+import org.mariotaku.twidere.model.ParcelableAccount;
+import org.mariotaku.twidere.model.ParcelableAccount.Indices;
+import org.mariotaku.twidere.provider.TwidereDataStore.Accounts;
+import org.mariotaku.twidere.util.MediaLoaderWrapper;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
 import org.mariotaku.twidere.view.holder.AccountViewHolder;
 
-public class AccountsAdapter extends SimpleCursorAdapter implements Constants {
+import javax.inject.Inject;
 
-	private final ImageLoaderWrapper mImageLoader;
-	private final SharedPreferences mPreferences;
+public class AccountsAdapter extends SimpleDragSortCursorAdapter implements Constants, IBaseAdapter {
 
-	private int mUserColorIdx, mProfileImageIdx, mScreenNameIdx, mAccountIdIdx;
-	private long mDefaultAccountId;
+    @Inject
+    MediaLoaderWrapper mImageLoader;
+    private final SharedPreferences mPreferences;
 
-	private boolean mDisplayProfileImage;
-	private int mChoiceMode;
+    private boolean mDisplayProfileImage;
+    private boolean mSortEnabled;
+    private Indices mIndices;
+    private boolean mSwitchEnabled;
+    private OnAccountToggleListener mOnAccountToggleListener;
 
-	public AccountsAdapter(final Context context) {
-		super(context, R.layout.list_item_account, null, new String[] { Accounts.NAME },
-				new int[] { android.R.id.text1 }, 0);
-		final TwidereApplication application = TwidereApplication.getInstance(context);
-		mImageLoader = application.getImageLoaderWrapper();
-		mPreferences = context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
-	}
+    private CompoundButton.OnCheckedChangeListener mCheckedChangeListener = new CompoundButton.OnCheckedChangeListener() {
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            final Object tag = buttonView.getTag();
+            if (!(tag instanceof Long) || mOnAccountToggleListener == null) return;
+            final long accountId = (Long) tag;
+            mOnAccountToggleListener.onAccountToggle(accountId, isChecked);
+        }
+    };
 
-	@Override
-	public void bindView(final View view, final Context context, final Cursor cursor) {
-		final int color = cursor.getInt(mUserColorIdx);
-		final AccountViewHolder holder = (AccountViewHolder) view.getTag();
-		holder.screen_name.setText("@" + cursor.getString(mScreenNameIdx));
-		holder.setAccountColor(color);
-		holder.setIsDefault(mDefaultAccountId != -1 && mDefaultAccountId == cursor.getLong(mAccountIdIdx));
-		if (mDisplayProfileImage) {
-			mImageLoader.displayProfileImage(holder.profile_image, cursor.getString(mProfileImageIdx));
-		} else {
-            mImageLoader.cancelDisplayTask(holder.profile_image);
-			holder.profile_image.setImageResource(R.drawable.ic_profile_image_default);
-		}
-		final boolean isMultipleChoice = mChoiceMode == ListView.CHOICE_MODE_MULTIPLE
-				|| mChoiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL;
-		holder.checkbox.setVisibility(isMultipleChoice ? View.VISIBLE : View.GONE);
-		super.bindView(view, context, cursor);
-	}
+    public AccountsAdapter(final Context context) {
+        super(context, R.layout.list_item_account, null, new String[]{Accounts.NAME},
+                new int[]{android.R.id.text1}, 0);
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(context)).build().inject(this);
+        mPreferences = context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
+    }
 
-	@Override
-	public long getItemId(final int position) {
-		final Cursor c = getCursor();
-		if (c == null || c.isClosed()) return -1;
-		c.moveToPosition(position);
-		return c.getLong(mAccountIdIdx);
-	}
+    public ParcelableAccount getAccount(int position) {
+        final Cursor c = getCursor();
+        if (c == null || c.isClosed() || !c.moveToPosition(position)) return null;
+        return new ParcelableAccount(c, mIndices);
+    }
 
-	@Override
-	public boolean hasStableIds() {
-		return true;
-	}
+    @Override
+    public void bindView(final View view, final Context context, final Cursor cursor) {
+        final int color = cursor.getInt(mIndices.color);
+        final AccountViewHolder holder = (AccountViewHolder) view.getTag();
+        holder.screenName.setText("@" + cursor.getString(mIndices.screen_name));
+        holder.setAccountColor(color);
+        if (mDisplayProfileImage) {
+            mImageLoader.displayProfileImage(holder.profileImage, cursor.getString(mIndices.profile_image_url));
+        } else {
+            mImageLoader.cancelDisplayTask(holder.profileImage);
+        }
+        holder.toggle.setChecked(cursor.getShort(mIndices.is_activated) == 1);
+        holder.toggle.setOnCheckedChangeListener(mCheckedChangeListener);
+        holder.toggle.setTag(cursor.getLong(mIndices.account_id));
+        holder.toggleContainer.setVisibility(mSwitchEnabled ? View.VISIBLE : View.GONE);
+        holder.setSortEnabled(mSortEnabled);
+        super.bindView(view, context, cursor);
+    }
 
-	@Override
-	public View newView(final Context context, final Cursor cursor, final ViewGroup parent) {
+    @Override
+    public View newView(final Context context, final Cursor cursor, final ViewGroup parent) {
+        final View view = super.newView(context, cursor, parent);
+        final AccountViewHolder holder = new AccountViewHolder(view);
+        view.setTag(holder);
+        return view;
+    }
 
-		final View view = super.newView(context, cursor, parent);
-		final AccountViewHolder viewholder = new AccountViewHolder(view);
-		view.setTag(viewholder);
-		return view;
-	}
+    @Override
+    public MediaLoaderWrapper getImageLoader() {
+        return mImageLoader;
+    }
 
-	@Override
-	public void notifyDataSetChanged() {
-		mDefaultAccountId = mPreferences.getLong(KEY_DEFAULT_ACCOUNT_ID, -1);
-		super.notifyDataSetChanged();
-	}
+    @Override
+    public int getLinkHighlightOption() {
+        return 0;
+    }
 
-	public void setChoiceMode(final int mode) {
-		if (mChoiceMode == mode) return;
-		mChoiceMode = mode;
-		notifyDataSetChanged();
-	}
+    @Override
+    public void setLinkHighlightOption(String option) {
 
-	public void setDisplayProfileImage(final boolean display) {
-		mDisplayProfileImage = display;
-		notifyDataSetChanged();
-	}
+    }
 
-	@Override
-	public Cursor swapCursor(final Cursor cursor) {
-		if (cursor != null) {
-			mAccountIdIdx = cursor.getColumnIndex(Accounts.ACCOUNT_ID);
-			mUserColorIdx = cursor.getColumnIndex(Accounts.COLOR);
-			mProfileImageIdx = cursor.getColumnIndex(Accounts.PROFILE_IMAGE_URL);
-			mScreenNameIdx = cursor.getColumnIndex(Accounts.SCREEN_NAME);
-		}
-		return super.swapCursor(cursor);
-	}
+    @Override
+    public float getTextSize() {
+        return 0;
+    }
+
+    @Override
+    public void setTextSize(float textSize) {
+
+    }
+
+    @Override
+    public boolean isDisplayNameFirst() {
+        return false;
+    }
+
+    @Override
+    public void setDisplayNameFirst(boolean nameFirst) {
+
+    }
+
+    @Override
+    public boolean isProfileImageDisplayed() {
+        return mDisplayProfileImage;
+    }
+
+    @Override
+    public boolean isShowAccountColor() {
+        return false;
+    }
+
+    @Override
+    public void setShowAccountColor(boolean show) {
+
+    }
+
+    public void setSwitchEnabled(final boolean enabled) {
+        if (mSwitchEnabled == enabled) return;
+        mSwitchEnabled = enabled;
+        notifyDataSetChanged();
+    }
+
+    @Override
+    public void setDisplayProfileImage(final boolean display) {
+        mDisplayProfileImage = display;
+        notifyDataSetChanged();
+    }
+
+    public void setOnAccountToggleListener(OnAccountToggleListener listener) {
+        mOnAccountToggleListener = listener;
+    }
+
+    @Override
+    public Cursor swapCursor(final Cursor cursor) {
+        if (cursor != null) {
+            mIndices = new Indices(cursor);
+        }
+        return super.swapCursor(cursor);
+    }
+
+    public void setSortEnabled(boolean sortEnabled) {
+        if (mSortEnabled == sortEnabled) return;
+        mSortEnabled = sortEnabled;
+        notifyDataSetChanged();
+    }
+
+    public interface OnAccountToggleListener {
+        void onAccountToggle(long accountId, boolean state);
+    }
 }

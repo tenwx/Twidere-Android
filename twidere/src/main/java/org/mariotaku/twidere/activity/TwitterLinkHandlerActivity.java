@@ -3,17 +3,19 @@ package org.mariotaku.twidere.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.UriMatcher;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.text.TextUtils;
+import android.util.Pair;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.activity.support.ComposeActivity;
-import org.mariotaku.twidere.util.ArrayUtils;
+import org.mariotaku.twidere.util.ParseUtils;
 import org.mariotaku.twidere.util.Utils;
 
 import java.util.List;
@@ -22,6 +24,7 @@ import static org.mariotaku.twidere.util.Utils.getDefaultAccountId;
 
 public class TwitterLinkHandlerActivity extends Activity implements Constants {
 
+    @SuppressWarnings("SpellCheckingInspection")
     public static final String[] TWITTER_RESERVED_PATHS = {"about", "account", "accounts", "activity", "all",
             "announcements", "anywhere", "api_rules", "api_terms", "apirules", "apps", "auth", "badges", "blog",
             "business", "buttons", "contacts", "devices", "direct_messages", "download", "downloads",
@@ -34,38 +37,21 @@ public class TwitterLinkHandlerActivity extends Activity implements Constants {
             "statistics", "terms", "tos", "translate", "trends", "tweetbutton", "twttr", "update_discoverability",
             "users", "welcome", "who_to_follow", "widgets", "zendesk_auth", "media_signup"};
 
-    private static final UriMatcher URI_MATCHER = new UriMatcher(UriMatcher.NO_MATCH);
 
     private static final String AUTHORITY_TWITTER_COM = "twitter.com";
 
-    private static final int URI_CODE_TWITTER_STATUS = 1;
-    private static final int URI_CODE_TWITTER_USER = 2;
-    private static final int URI_CODE_TWITTER_USER_FOLLOWING = 11;
-    private static final int URI_CODE_TWITTER_USER_FOLLOWERS = 12;
-    private static final int URI_CODE_TWITTER_USER_FAVORITES = 13;
-    private static final int URI_CODE_TWITTER_USER_LIST = 14;
-    private static final int URI_CODE_TWITTER_USER_LIST_MEMBERS = 41;
-    private static final int URI_CODE_TWITTER_USER_LIST_SUBSCRIBERS = 42;
-    private static final int URI_CODE_TWITTER_INTENT_TWEET = 101;
-    private static final int URI_CODE_TWITTER_REDIRECT = 201;
-
-
-    static {
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/i/redirect", URI_CODE_TWITTER_REDIRECT);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/intent/tweet", URI_CODE_TWITTER_INTENT_TWEET);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/status/#", URI_CODE_TWITTER_STATUS);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/status/#/photo/#", URI_CODE_TWITTER_STATUS);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*", URI_CODE_TWITTER_USER);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/following", URI_CODE_TWITTER_USER_FOLLOWING);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/followers", URI_CODE_TWITTER_USER_FOLLOWERS);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/favorites", URI_CODE_TWITTER_USER_FAVORITES);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/*", URI_CODE_TWITTER_USER_LIST);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/*/members", URI_CODE_TWITTER_USER_LIST_MEMBERS);
-        URI_MATCHER.addURI(AUTHORITY_TWITTER_COM, "/*/*/subscribers", URI_CODE_TWITTER_USER_LIST_MEMBERS);
-    }
-
     private SharedPreferences mPreferences;
-    private PackageManager mPackageManager;
+
+    private static Uri regulateTwitterUri(Uri data) {
+        final String encodedFragment = data.getEncodedFragment();
+        if (encodedFragment != null && encodedFragment.startsWith("!/")) {
+            return regulateTwitterUri(Uri.parse("https://twitter.com" + encodedFragment.substring(1)));
+        }
+        final Uri.Builder builder = data.buildUpon();
+        builder.scheme("https");
+        builder.authority(AUTHORITY_TWITTER_COM);
+        return builder.build();
+    }
 
     @Override
     protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
@@ -90,7 +76,6 @@ public class TwitterLinkHandlerActivity extends Activity implements Constants {
                 intent.setClassName(activityInfo.packageName, activityInfo.name);
                 startActivity(intent);
                 finish();
-                return;
             }
         }
     }
@@ -98,7 +83,7 @@ public class TwitterLinkHandlerActivity extends Activity implements Constants {
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        mPackageManager = getPackageManager();
+        final PackageManager packageManager = getPackageManager();
         mPreferences = getSharedPreferences(SHARED_PREFERENCES_NAME, MODE_PRIVATE);
         final Intent intent = getIntent();
         final Uri data = intent.getData();
@@ -106,15 +91,18 @@ public class TwitterLinkHandlerActivity extends Activity implements Constants {
             finish();
             return;
         }
-        final Uri uri = data.buildUpon().authority(AUTHORITY_TWITTER_COM).build();
-        final Intent handledIntent = getHandledIntent(uri);
-        if (handledIntent != null) {
-            startActivity(handledIntent);
+        final Uri uri = regulateTwitterUri(data);
+        final Pair<Intent, Boolean> handled = getHandledIntent(uri);
+        if (handled.first != null) {
+            startActivity(handled.first);
         } else {
+            if (!handled.second) {
+//                AbsLogger.error(new TwitterLinkException("Unable to handle twitter uri " + uri));
+            }
             final String packageName = mPreferences.getString(KEY_FALLBACK_TWITTER_LINK_HANDLER, null);
             final Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, uri);
             fallbackIntent.setPackage(packageName);
-            if (TextUtils.isEmpty(packageName) || mPackageManager.queryIntentActivities(fallbackIntent, 0).isEmpty()) {
+            if (TextUtils.isEmpty(packageName) || packageManager.queryIntentActivities(fallbackIntent, 0).isEmpty()) {
                 final Intent pickIntent = new Intent(INTENT_ACTION_PICK_ACTIVITY);
                 pickIntent.putExtra(EXTRA_INTENT, new Intent(Intent.ACTION_VIEW, uri));
                 pickIntent.putExtra(EXTRA_BLACKLIST, new String[]{getPackageName()});
@@ -127,110 +115,163 @@ public class TwitterLinkHandlerActivity extends Activity implements Constants {
         finish();
     }
 
-    private Intent getHandledIntent(final Uri uri) {
+    @Override
+    protected void onStart() {
+        super.onStart();
+        setVisible(true);
+    }
+
+    @NonNull
+    private Pair<Intent, Boolean> getHandledIntent(final Uri uri) {
         final List<String> pathSegments = uri.getPathSegments();
-        switch (URI_MATCHER.match(uri)) {
-            case URI_CODE_TWITTER_STATUS: {
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_STATUS);
-                builder.appendQueryParameter(QUERY_PARAM_STATUS_ID, pathSegments.get(2));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_INTENT_TWEET: {
-                final Intent handledIntent = new Intent(this, ComposeActivity.class);
-                handledIntent.setAction(Intent.ACTION_SEND);
-                final String text = uri.getQueryParameter("text");
-                final String url = uri.getQueryParameter("url");
-                handledIntent.putExtra(Intent.EXTRA_TEXT, Utils.getShareStatus(this, text, url));
-                return handledIntent;
-            }
-            case URI_CODE_TWITTER_USER: {
-                final String pathSegment = pathSegments.get(0);
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                if ("share".equals(pathSegment)) {
+        if (pathSegments.size() > 0) {
+            switch (pathSegments.get(0)) {
+                case "i": {
+                    return getIUriIntent(uri, pathSegments);
+                }
+                case "intent": {
+                    return getIntentUriIntent(uri, pathSegments);
+                }
+                case "share": {
                     final Intent handledIntent = new Intent(this, ComposeActivity.class);
                     handledIntent.setAction(Intent.ACTION_SEND);
                     final String text = uri.getQueryParameter("text");
                     final String url = uri.getQueryParameter("url");
                     handledIntent.putExtra(Intent.EXTRA_TEXT, Utils.getShareStatus(this, text, url));
-                    return handledIntent;
-                } else if ("following".equals(pathSegment)) {
+                    return Pair.create(handledIntent, true);
+                }
+                case "search": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
+                    builder.authority(AUTHORITY_SEARCH);
+                    builder.appendQueryParameter(QUERY_PARAM_QUERY, uri.getQueryParameter("q"));
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                case "following": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
                     builder.authority(AUTHORITY_USER_FRIENDS);
                     builder.appendQueryParameter(QUERY_PARAM_USER_ID, String.valueOf(getDefaultAccountId(this)));
-                } else if ("followers".equals(pathSegment)) {
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                case "followers": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
                     builder.authority(AUTHORITY_USER_FOLLOWERS);
                     builder.appendQueryParameter(QUERY_PARAM_USER_ID, String.valueOf(getDefaultAccountId(this)));
-                } else if ("favorites".equals(pathSegment)) {
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                case "favorites": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
                     builder.authority(AUTHORITY_USER_FAVORITES);
                     builder.appendQueryParameter(QUERY_PARAM_USER_ID, String.valueOf(getDefaultAccountId(this)));
-                } else if (!ArrayUtils.contains(TWITTER_RESERVED_PATHS, pathSegment)) {
-                    builder.authority(AUTHORITY_USER);
-                    builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, pathSegment);
-                } else
-                    return null;
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_FOLLOWING: {
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_FRIENDS);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, pathSegments.get(0));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_FOLLOWERS: {
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_FOLLOWERS);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, pathSegments.get(0));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_FAVORITES: {
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_FAVORITES);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, pathSegments.get(0));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_LIST: {
-                final String firstSegment = pathSegments.get(0);
-                if (ArrayUtils.contains(TWITTER_RESERVED_PATHS, firstSegment)) {
-                    return null;
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
                 }
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_LIST);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, firstSegment);
-                builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_LIST_MEMBERS: {
-                final String firstSegment = pathSegments.get(0);
-                if (ArrayUtils.contains(TWITTER_RESERVED_PATHS, firstSegment)) {
-                    return null;
+                default: {
+                    if (ArrayUtils.contains(TWITTER_RESERVED_PATHS, pathSegments.get(0))) {
+                        return Pair.create(null, true);
+                    }
+                    return handleUserSpecificPageIntent(uri, pathSegments, pathSegments.get(0));
                 }
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_LIST_MEMBERS);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, firstSegment);
-                builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
-            }
-            case URI_CODE_TWITTER_USER_LIST_SUBSCRIBERS: {
-                final String firstSegment = pathSegments.get(0);
-                if (ArrayUtils.contains(TWITTER_RESERVED_PATHS, firstSegment)) {
-                    return null;
-                }
-                final Uri.Builder builder = new Uri.Builder();
-                builder.scheme(SCHEME_TWIDERE);
-                builder.authority(AUTHORITY_USER_LIST_SUBSCRIBERS);
-                builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, firstSegment);
-                builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
-                return new Intent(Intent.ACTION_VIEW, builder.build());
             }
         }
-        return null;
+        return Pair.create(null, false);
     }
 
+    private Pair<Intent, Boolean> handleUserSpecificPageIntent(Uri uri, List<String> pathSegments, String screenName) {
+        final int segsSize = pathSegments.size();
+        if (segsSize == 1) {
+            final Uri.Builder builder = new Uri.Builder();
+            builder.scheme(SCHEME_TWIDERE);
+            builder.authority(AUTHORITY_USER);
+            builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+            return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+        } else if (segsSize == 2) {
+            switch (pathSegments.get(1)) {
+                case "following": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
+                    builder.authority(AUTHORITY_USER_FRIENDS);
+                    builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                case "followers": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
+                    builder.authority(AUTHORITY_USER_FOLLOWERS);
+                    builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                case "favorites": {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
+                    builder.authority(AUTHORITY_USER_FAVORITES);
+                    builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+                default: {
+                    final Uri.Builder builder = new Uri.Builder();
+                    builder.scheme(SCHEME_TWIDERE);
+                    builder.authority(AUTHORITY_USER_LIST);
+                    builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                    builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
+                    return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                }
+            }
+        } else if (segsSize >= 3) {
+            if ("status".equals(pathSegments.get(1)) && ParseUtils.parseLong(pathSegments.get(2), -1) != -1) {
+                final Uri.Builder builder = new Uri.Builder();
+                builder.scheme(SCHEME_TWIDERE);
+                builder.authority(AUTHORITY_STATUS);
+                builder.appendQueryParameter(QUERY_PARAM_STATUS_ID, pathSegments.get(2));
+                return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+            } else {
+                switch (pathSegments.get(2)) {
+                    case "members": {
+                        final Uri.Builder builder = new Uri.Builder();
+                        builder.scheme(SCHEME_TWIDERE);
+                        builder.authority(AUTHORITY_USER_LIST_MEMBERS);
+                        builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                        builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
+                        return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                    }
+                    case "subscribers": {
+                        final Uri.Builder builder = new Uri.Builder();
+                        builder.scheme(SCHEME_TWIDERE);
+                        builder.authority(AUTHORITY_USER_LIST_SUBSCRIBERS);
+                        builder.appendQueryParameter(QUERY_PARAM_SCREEN_NAME, screenName);
+                        builder.appendQueryParameter(QUERY_PARAM_LIST_NAME, pathSegments.get(1));
+                        return Pair.create(new Intent(Intent.ACTION_VIEW, builder.build()), true);
+                    }
+                }
+            }
+        }
+        return Pair.create(null, false);
+    }
+
+    private Pair<Intent, Boolean> getIntentUriIntent(Uri uri, List<String> pathSegments) {
+        if (pathSegments.size() < 2) return Pair.create(null, false);
+        switch (pathSegments.get(1)) {
+            case "tweet": {
+                final Intent handledIntent = new Intent(this, ComposeActivity.class);
+                handledIntent.setAction(Intent.ACTION_SEND);
+                final String text = uri.getQueryParameter("text");
+                final String url = uri.getQueryParameter("url");
+                handledIntent.putExtra(Intent.EXTRA_TEXT, Utils.getShareStatus(this, text, url));
+                return Pair.create(handledIntent, true);
+            }
+        }
+        return Pair.create(null, false);
+    }
+
+    private Pair<Intent, Boolean> getIUriIntent(Uri uri, List<String> pathSegments) {
+        return Pair.create(null, false);
+    }
+
+    private class TwitterLinkException extends Exception {
+        public TwitterLinkException(final String s) {
+            super(s);
+        }
+    }
 }

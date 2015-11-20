@@ -1,100 +1,134 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merge xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Twidere - Twitter client for Android
+  ~
+  ~  Copyright (C) 2012-2014 Mariotaku Lee <mariotaku.lee@gmail.com>
+  ~
+  ~  This program is free software: you can redistribute it and/or modify
+  ~  it under the terms of the GNU General Public License as published by
+  ~  the Free Software Foundation, either version 3 of the License, or
+  ~  (at your option) any later version.
+  ~
+  ~  This program is distributed in the hope that it will be useful,
+  ~  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~  GNU General Public License for more details.
+  ~
+  ~  You should have received a copy of the GNU General Public License
+  ~  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+<org.mariotaku.twidere.view.TintedStatusNativeActionModeAwareLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_content"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:setPadding="true">
 
-    <ScrollView
+    <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_gravity="center">
+        android:layout_height="match_parent">
 
-        <RelativeLayout
-            android:layout_width="300dp"
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_below="@+id/twidere_action_bar_container"
+            android:layout_gravity="center">
+
+            <LinearLayout
+                android:layout_width="300dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/username_password"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp">
+
+                    <EditText
+                        android:id="@+id/username"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ems="10"
+                        android:hint="@string/username"
+                        android:inputType="textEmailAddress"
+                        android:singleLine="true"
+                        android:typeface="normal" />
+
+                    <EditText
+                        android:id="@+id/password"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:ems="10"
+                        android:hint="@string/password"
+                        android:inputType="textPassword"
+                        android:singleLine="true"
+                        android:typeface="normal" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/sign_in_sign_up"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="8dp">
+
+                    <Button
+                        android:id="@+id/sign_up"
+                        style="?android:buttonStyleSmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:text="@string/register" />
+
+                    <Button
+                        android:id="@+id/sign_in"
+                        style="?android:buttonStyleSmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:onClick="onClick"
+                        android:text="@string/sign_in" />
+
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/sign_in_method_introduction"
+                    style="?android:borderlessButtonStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="8dp"
+                    android:clickable="true"
+                    android:gravity="center_vertical"
+                    android:minHeight="36dp"
+                    android:onClick="onClick"
+                    android:text="@string/sign_in_method_introduction_title"
+                    android:textAppearance="?android:textAppearanceSmall" />
+            </LinearLayout>
+        </ScrollView>
+
+        <org.mariotaku.twidere.view.TwidereActionBarContainer
+            android:id="@+id/twidere_action_bar_container"
+            style="?attr/actionBarStyle"
+            android:layout_width="match_parent"
+            android:layout_height="?actionBarSize"
+            android:layout_alignParentTop="true"
+            android:touchscreenBlocksFocus="true"
+            tools:ignore="UnusedAttribute" />
+
+        <View
+            android:id="@+id/window_overlay"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center">
+            android:layout_below="@+id/twidere_action_bar_container"
+            android:background="?android:windowContentOverlay" />
+    </RelativeLayout>
 
-            <LinearLayout
-                android:id="@+id/username_password"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <EditText
-                    android:id="@+id/username"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ems="10"
-                    android:hint="@string/username"
-                    android:inputType="textEmailAddress"
-                    android:singleLine="true"
-                    android:typeface="normal" />
-
-                <EditText
-                    android:id="@+id/password"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:ems="10"
-                    android:hint="@string/password"
-                    android:inputType="textPassword"
-                    android:singleLine="true"
-                    android:typeface="normal" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/sign_in_sign_up"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_below="@+id/username_password"
-                android:orientation="horizontal"
-                android:padding="8dp">
-
-                <Button
-                    android:id="@+id/sign_in"
-                    style="?android:buttonStyleSmall"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:minHeight="48dp"
-                    android:onClick="onClick"
-                    android:text="@string/sign_in" />
-
-                <Button
-                    android:id="@+id/sign_up"
-                    style="?android:buttonStyleSmall"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:minHeight="48dp"
-                    android:onClick="onClick"
-                    android:text="@string/sign_up" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/sign_in_method_introduction"
-                style="?android:borderlessButtonStyle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_below="@+id/sign_in_sign_up"
-                android:layout_margin="8dp"
-                android:clickable="true"
-                android:gravity="center_vertical"
-                android:minHeight="36dp"
-                android:onClick="onClick"
-                android:text="@string/sign_in_method_introduction_title"
-                android:textAppearance="?android:textAppearanceSmall" />
-        </RelativeLayout>
-    </ScrollView>
-
-    <org.mariotaku.twidere.view.ResourceImageButton
-        android:id="@+id/set_color"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:layout_gravity="bottom|right"
-        android:layout_weight="0"
-        android:contentDescription="@string/set_color"
-        android:onClick="onClick"
-        app:image="@drawable/ic_iconic_action_color_palette" />
-
-</merge>
+</org.mariotaku.twidere.view.TintedStatusNativeActionModeAwareLayout>

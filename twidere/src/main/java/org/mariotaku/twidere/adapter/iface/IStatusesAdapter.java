@@ -1,67 +1,44 @@
-/*
- * 				Twidere - Twitter client for Android
- * 
- *  Copyright (C) 2012-2014 Mariotaku Lee <mariotaku.lee@gmail.com>
- * 
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- * 
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 package org.mariotaku.twidere.adapter.iface;
 
 import org.mariotaku.twidere.model.ParcelableStatus;
+import org.mariotaku.twidere.util.MediaLoadingHandler;
+import org.mariotaku.twidere.util.TwidereLinkify;
+import org.mariotaku.twidere.view.CardMediaContainer.PreviewStyle;
+import org.mariotaku.twidere.view.holder.iface.IStatusViewHolder;
 
-public interface IStatusesAdapter<Data> extends IBaseCardAdapter {
+/**
+ * Created by mariotaku on 14/11/18.
+ */
+public interface IStatusesAdapter<Data> extends IContentCardAdapter, IStatusViewHolder.StatusClickListener,
+        IGapSupportedAdapter, ContentCardClickListener {
 
-	public int findPositionByStatusId(final long statusId);
+    int getLinkHighlightingStyle();
 
-	public long getAccountId(final int position);
+    @PreviewStyle
+    int getMediaPreviewStyle();
 
-	public int getActualCount();
+    ParcelableStatus getStatus(int position);
 
-	public ParcelableStatus getLastStatus();
+    long getStatusId(int position);
 
-	public long getLastStatusId();
+    int getStatusesCount();
 
-	public ParcelableStatus getStatus(int position);
+    TwidereLinkify getTwidereLinkify();
 
-	public long getStatusId(final int position);
+    boolean isCardActionsHidden();
 
-	public boolean isLastItemFiltered();
+    boolean isMediaPreviewEnabled();
 
-	public void setCardHighlightOption(String option);
+    boolean isNameFirst();
 
-	public void setData(Data data);
+    boolean isSensitiveContentEnabled();
 
-	public void setDisplayImagePreview(boolean display);
+    void setData(Data data);
 
-	public void setDisplaySensitiveContents(boolean display);
+    boolean shouldShowAccountsColor();
 
-	public void setFavoritesHightlightDisabled(boolean disable);
+    boolean shouldUseStarsForLikes();
 
-	public void setFiltersEnabled(boolean enabled);
-
-	public void setGapDisallowed(boolean disallowed);
-
-	public void setHighlightKeyword(String... keywords);
-
-	public void setIgnoredFilterFields(final boolean user, final boolean textPlain, final boolean textHtml,
-			final boolean source, final boolean retweetedById);
-
-	public void setImagePreviewScaleType(String scaleType);
-
-	public void setIndicateMyStatusDisabled(boolean disable);
-
-	public void setMentionsHightlightDisabled(boolean disable);
+    MediaLoadingHandler getMediaLoadingHandler();
 
 }

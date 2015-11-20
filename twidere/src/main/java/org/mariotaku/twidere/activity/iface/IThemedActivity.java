@@ -19,35 +19,33 @@
 
 package org.mariotaku.twidere.activity.iface;
 
-import android.content.res.Resources;
-import android.view.Menu;
+import org.mariotaku.twidere.view.ShapedImageView;
 
-import org.mariotaku.twidere.content.iface.ITwidereContextWrapper;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
+public interface IThemedActivity {
 
-public interface IThemedActivity extends ITwidereContextWrapper {
+    int getCurrentThemeBackgroundAlpha();
 
-	public int getCurrentThemeResourceId();
+    String getCurrentThemeBackgroundOption();
 
-	public Resources getDefaultResources();
+    int getCurrentThemeColor();
 
-	public int getThemeBackgroundAlpha();
+    int getCurrentThemeResourceId();
 
-	public int getOverrideAccentColor();
+    int getThemeBackgroundAlpha();
 
-    public TwidereMenuInflater getTwidereMenuInflater();
+    String getThemeBackgroundOption();
 
-	public String getThemeFontFamily();
+    int getThemeColor();
 
-	public boolean isDarkDrawerEnabled();
+    String getThemeFontFamily();
 
-	public void navigateUpFromSameTask();
+    String getCurrentThemeFontFamily();
 
-	public void overrideCloseAnimationIfNeeded();
+    int getThemeResourceId();
 
-	public void restart();
+    @ShapedImageView.ShapeStyle
+    int getCurrentProfileImageStyle();
 
-    public boolean onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater);
+    void restart();
 
-	public boolean shouldOverrideActivityAnimation();
 }

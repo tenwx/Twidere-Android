@@ -19,90 +19,97 @@
 
 package org.mariotaku.twidere.loader.support;
 
-import static org.mariotaku.twidere.util.Utils.getTwitterInstance;
-
 import android.content.Context;
 import android.support.v4.content.AsyncTaskLoader;
 
+import org.mariotaku.twidere.loader.support.iface.ICursorSupportLoader;
 import org.mariotaku.twidere.model.ParcelableUserList;
+import org.mariotaku.twidere.util.TwitterAPIFactory;
 import org.mariotaku.twidere.util.collection.NoDuplicatesArrayList;
-
-import twitter4j.CursorSupport;
-import twitter4j.PagableResponseList;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-import twitter4j.UserList;
 
 import java.util.Collections;
 import java.util.List;
 
-public abstract class BaseUserListsLoader extends AsyncTaskLoader<List<ParcelableUserList>> {
+import org.mariotaku.twidere.api.twitter.model.CursorSupport;
+import org.mariotaku.twidere.api.twitter.model.PageableResponseList;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
+import org.mariotaku.twidere.api.twitter.model.UserList;
 
-	protected final NoDuplicatesArrayList<ParcelableUserList> mData = new NoDuplicatesArrayList<ParcelableUserList>();
-	protected final long mAccountId;
-	private final long mCursor;
+import static org.mariotaku.twidere.util.TwitterAPIFactory.getTwitterInstance;
 
-	private long mNextCursor, mPrevCursor;
+public abstract class BaseUserListsLoader extends AsyncTaskLoader<List<ParcelableUserList>>
+        implements ICursorSupportLoader {
 
-	public BaseUserListsLoader(final Context context, final long account_id, final long cursor,
-			final List<ParcelableUserList> data) {
-		super(context);
-		if (data != null) {
-			mData.addAll(data);
-		}
-		mCursor = cursor;
-		mAccountId = account_id;
-	}
+    protected final NoDuplicatesArrayList<ParcelableUserList> mData = new NoDuplicatesArrayList<>();
+    protected final long mAccountId;
+    private final long mCursor;
 
-	public long getCursor() {
-		return mCursor;
-	}
+    private long mNextCursor, mPrevCursor;
 
-	public long getNextCursor() {
-		return mNextCursor;
-	}
+    public BaseUserListsLoader(final Context context, final long accountId, final long cursor,
+                               final List<ParcelableUserList> data) {
+        super(context);
+        if (data != null) {
+            mData.addAll(data);
+        }
+        mCursor = cursor;
+        mAccountId = accountId;
+    }
 
-	public long getPrevCursor() {
-		return mPrevCursor;
-	}
+    @Override
+    public long getCursor() {
+        return mCursor;
+    }
 
-	public abstract List<UserList> getUserLists(final Twitter twitter) throws TwitterException;;
+    @Override
+    public long getNextCursor() {
+        return mNextCursor;
+    }
 
-	@Override
-	public List<ParcelableUserList> loadInBackground() {
-		final Twitter twitter = getTwitterInstance(getContext(), mAccountId, true);
-		List<UserList> list_loaded = null;
-		try {
-			list_loaded = getUserLists(twitter);
-		} catch (final TwitterException e) {
-			e.printStackTrace();
-		}
-		if (list_loaded != null) {
-			final int list_size = list_loaded.size();
-			if (list_loaded instanceof PagableResponseList) {
-				mNextCursor = ((CursorSupport) list_loaded).getNextCursor();
-				mPrevCursor = ((CursorSupport) list_loaded).getPreviousCursor();
-				for (int i = 0; i < list_size; i++) {
-					final UserList list = list_loaded.get(i);
-					mData.add(new ParcelableUserList(list, mAccountId, (mCursor + 1) * 20 + i, isFollowing(list)));
-				}
-			} else {
-				for (int i = 0; i < list_size; i++) {
-					final UserList list = list_loaded.get(i);
-					mData.add(new ParcelableUserList(list_loaded.get(i), mAccountId, i, isFollowing(list)));
-				}
-			}
-		}
-		Collections.sort(mData);
-		return mData;
-	}
+    @Override
+    public long getPrevCursor() {
+        return mPrevCursor;
+    }
 
-	@Override
-	public void onStartLoading() {
-		forceLoad();
-	}
+    public abstract List<UserList> getUserLists(final Twitter twitter) throws TwitterException;
 
-	protected boolean isFollowing(final UserList list) {
-		return list.isFollowing();
-	}
+    @Override
+    public List<ParcelableUserList> loadInBackground() {
+        final Twitter twitter = TwitterAPIFactory.getTwitterInstance(getContext(), mAccountId, true);
+        List<UserList> listLoaded = null;
+        try {
+            listLoaded = getUserLists(twitter);
+        } catch (final TwitterException e) {
+            e.printStackTrace();
+        }
+        if (listLoaded != null) {
+            final int listSize = listLoaded.size();
+            if (listLoaded instanceof PageableResponseList) {
+                mNextCursor = ((CursorSupport) listLoaded).getNextCursor();
+                mPrevCursor = ((CursorSupport) listLoaded).getPreviousCursor();
+                final int dataSize = mData.size();
+                for (int i = 0; i < listSize; i++) {
+                    final UserList list = listLoaded.get(i);
+                    mData.add(new ParcelableUserList(list, mAccountId, dataSize + i, isFollowing(list)));
+                }
+            } else {
+                for (int i = 0; i < listSize; i++) {
+                    final UserList list = listLoaded.get(i);
+                    mData.add(new ParcelableUserList(listLoaded.get(i), mAccountId, i, isFollowing(list)));
+                }
+            }
+        }
+        Collections.sort(mData);
+        return mData;
+    }
+
+    @Override
+    public void onStartLoading() {
+        forceLoad();
+    }
+
+    protected boolean isFollowing(final UserList list) {
+        return list.isFollowing();
+    }
 }

@@ -26,63 +26,104 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.app.TwidereApplication;
-import org.mariotaku.twidere.fragment.support.DirectMessagesConversationFragment;
-import org.mariotaku.twidere.model.Account;
-import org.mariotaku.twidere.util.ImageLoaderWrapper;
+import org.mariotaku.twidere.fragment.support.MessagesConversationFragment;
+import org.mariotaku.twidere.model.ParcelableCredentials;
+import org.mariotaku.twidere.util.MediaLoaderWrapper;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
 
 import java.util.Collection;
 
-public class AccountsSpinnerAdapter extends ArrayAdapter<Account> {
+import javax.inject.Inject;
 
-	private final ImageLoaderWrapper mImageLoader;
-	private final boolean mDisplayProfileImage;
+public class AccountsSpinnerAdapter extends ArrayAdapter<ParcelableCredentials> {
 
-	public AccountsSpinnerAdapter(final Context context) {
-		super(context, R.layout.list_item_two_line_small);
-		setDropDownViewResource(R.layout.list_item_two_line_small);
-		mImageLoader = TwidereApplication.getInstance(context).getImageLoaderWrapper();
-		mDisplayProfileImage = context.getSharedPreferences(DirectMessagesConversationFragment.SHARED_PREFERENCES_NAME,
-				Context.MODE_PRIVATE).getBoolean(DirectMessagesConversationFragment.KEY_DISPLAY_PROFILE_IMAGE, true);
-	}
+    @Inject
+    MediaLoaderWrapper mImageLoader;
+    private final boolean mDisplayProfileImage;
+    private final Context mContext;
+    private String mDummyItemText;
 
-	public AccountsSpinnerAdapter(final Context context, final Collection<Account> accounts) {
-		this(context);
-		addAll(accounts);
-	}
+    public AccountsSpinnerAdapter(final Context context) {
+        this(context, R.layout.list_item_user);
+    }
 
-	@Override
-	public View getDropDownView(final int position, final View convertView, final ViewGroup parent) {
-		final View view = super.getDropDownView(position, convertView, parent);
-		bindView(view, getItem(position));
-		return view;
-	}
+    public AccountsSpinnerAdapter(final Context context, int itemViewResource) {
+        super(context, itemViewResource);
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(context)).build().inject(this);
+        mContext = context;
+        mDisplayProfileImage = context.getSharedPreferences(MessagesConversationFragment.SHARED_PREFERENCES_NAME,
+                Context.MODE_PRIVATE).getBoolean(MessagesConversationFragment.KEY_DISPLAY_PROFILE_IMAGE, true);
+    }
 
-	@Override
-	public View getView(final int position, final View convertView, final ViewGroup parent) {
-		final View view = super.getView(position, convertView, parent);
-		bindView(view, getItem(position));
-		return view;
-	}
+    public AccountsSpinnerAdapter(final Context context, final Collection<ParcelableCredentials> accounts) {
+        this(context);
+        addAll(accounts);
+    }
 
-	private void bindView(final View view, final Account item) {
-		final TextView text1 = (TextView) view.findViewById(android.R.id.text1);
-		final TextView text2 = (TextView) view.findViewById(android.R.id.text2);
-		final ImageView icon = (ImageView) view.findViewById(android.R.id.icon);
-		text2.setVisibility(item.is_dummy ? View.GONE : View.VISIBLE);
-		icon.setVisibility(item.is_dummy ? View.GONE : View.VISIBLE);
-		if (!item.is_dummy) {
-			text1.setText(item.name);
-			text2.setText(String.format("@%s", item.screen_name));
-			if (mDisplayProfileImage) {
-				mImageLoader.displayProfileImage(icon, item.profile_image_url);
-			} else {
-                mImageLoader.cancelDisplayTask(icon);
-				icon.setImageResource(R.drawable.ic_profile_image_default);
-			}
-		} else {
-			text1.setText(R.string.none);
-		}
-	}
+    @Override
+    public long getItemId(int position) {
+        return getItem(position).account_id;
+    }
+
+    @Override
+    public View getDropDownView(final int position, final View convertView, final ViewGroup parent) {
+        final View view = super.getDropDownView(position, convertView, parent);
+        bindView(view, getItem(position));
+        return view;
+    }
+
+    @Override
+    public View getView(final int position, final View convertView, final ViewGroup parent) {
+        final View view = super.getView(position, convertView, parent);
+        bindView(view, getItem(position));
+        return view;
+    }
+
+    private void bindView(final View view, final ParcelableCredentials item) {
+        final TextView text1 = (TextView) view.findViewById(android.R.id.text1);
+        final TextView text2 = (TextView) view.findViewById(android.R.id.text2);
+        final ImageView icon = (ImageView) view.findViewById(android.R.id.icon);
+        if (!item.is_dummy) {
+            if (text1 != null) {
+                text1.setVisibility(View.VISIBLE);
+                text1.setText(item.name);
+            }
+            if (text2 != null) {
+                text2.setVisibility(View.VISIBLE);
+                text2.setText(String.format("@%s", item.screen_name));
+            }
+            if (icon != null) {
+                icon.setVisibility(View.VISIBLE);
+                if (mDisplayProfileImage) {
+                    mImageLoader.displayProfileImage(icon, item.profile_image_url);
+                } else {
+                    mImageLoader.cancelDisplayTask(icon);
+//                    icon.setImageResource(R.drawable.ic_profile_image_default);
+                }
+            }
+        } else {
+            if (text1 != null) {
+                text1.setVisibility(View.VISIBLE);
+                text1.setText(mDummyItemText);
+            }
+            if (text2 != null) {
+                text2.setVisibility(View.GONE);
+            }
+            if (icon != null) {
+                icon.setVisibility(View.GONE);
+            }
+        }
+    }
+
+
+    public void setDummyItemText(int textRes) {
+        setDummyItemText(mContext.getString(textRes));
+    }
+
+    public void setDummyItemText(String text) {
+        mDummyItemText = text;
+        notifyDataSetChanged();
+    }
 
 }

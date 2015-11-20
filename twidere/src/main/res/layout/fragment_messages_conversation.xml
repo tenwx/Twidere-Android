@@ -1,65 +1,191 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:tools="http://schemas.android.com/tools"
-	android:layout_width="match_parent"
-	android:layout_height="match_parent"
-	tools:context=".fragment.DirectMessagesConversationFragment">
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Twidere - Twitter client for Android
+  ~
+  ~  Copyright (C) 2012-2014 Mariotaku Lee <mariotaku.lee@gmail.com>
+  ~
+  ~  This program is free software: you can redistribute it and/or modify
+  ~  it under the terms of the GNU General Public License as published by
+  ~  the Free Software Foundation, either version 3 of the License, or
+  ~  (at your option) any later version.
+  ~
+  ~  This program is distributed in the hope that it will be useful,
+  ~  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~  GNU General Public License for more details.
+  ~
+  ~  You should have received a copy of the GNU General Public License
+  ~  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
 
-	<RelativeLayout
-		android:id="@+id/conversation_container"
-		android:layout_width="match_parent"
-		android:layout_height="match_parent"
-		android:visibility="gone">
+<FrameLayout
+    android:id="@+id/fragment_content"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".fragment.DirectMessagesConversationFragment">
 
-		<FrameLayout
-			android:id="@+id/list_container"
-			android:layout_width="match_parent"
-			android:layout_height="match_parent"
-			android:layout_above="@+id/input_send_container"/>
+    <RelativeLayout
+        android:id="@+id/conversation_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        tools:visibility="visible">
 
-		<FrameLayout
-			android:id="@+id/input_send_container"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_alignParentBottom="true"/>
-	</RelativeLayout>
+        <FrameLayout
+            android:id="@+id/list_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_above="@+id/input_panel">
 
-	<LinearLayout
-		android:id="@+id/recipient_selector_container"
-		android:layout_width="match_parent"
-		android:layout_height="match_parent"
-		android:orientation="vertical"
-		android:visibility="visible">
+            <org.mariotaku.twidere.view.ExtendedRecyclerView
+                android:id="@+id/recycler_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scrollbars="vertical"/>
 
-		<LinearLayout
-			android:layout_width="300dp"
-			android:layout_height="0dp"
-			android:layout_gravity="center"
-			android:layout_weight="1"
-			android:gravity="center"
-			android:orientation="vertical"
-			android:padding="16dp">
+        </FrameLayout>
 
-			<Spinner
-				android:id="@+id/account_selector"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:minHeight="?android:listPreferredItemHeightSmall"
-				android:padding="@dimen/element_spacing_normal"
-				tools:listitem="@layout/list_item_two_line_small"/>
+        <View
+            android:id="@+id/input_panel_shadow_compat"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/element_spacing_small"
+            android:layout_above="@+id/input_panel"
+            android:background="@drawable/shadow_top"/>
 
-			<TextView
-				android:id="@+id/recipient_selector"
-				style="?android:dropDownSpinnerStyle"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:clickable="true"
-				android:gravity="center_vertical"
-				android:minHeight="?android:listPreferredItemHeightSmall"
-				android:padding="@dimen/element_spacing_normal"
-				android:text="@string/select_user"
-				android:textAppearance="?android:textAppearanceMedium"/>
-		</LinearLayout>
-	</LinearLayout>
+        <RelativeLayout
+            android:id="@+id/input_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:background="?android:colorBackground"
+            android:gravity="bottom"
+            android:orientation="horizontal"
+            android:outlineProvider="bounds"
+            android:padding="@dimen/element_spacing_normal"
+            tools:ignore="UnusedAttribute">
+
+            <org.mariotaku.twidere.view.ActionIconView
+                android:id="@+id/add_image"
+                android:layout_width="@dimen/element_size_normal"
+                android:layout_height="@dimen/element_size_normal"
+                android:layout_alignParentLeft="true"
+                android:layout_alignParentStart="true"
+                android:background="?selectableItemBackground"
+                android:clickable="true"
+                android:color="?android:textColorSecondary"
+                android:contentDescription="@string/add_image"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_action_gallery"/>
+
+            <org.mariotaku.twidere.view.ActionIconView
+                android:id="@+id/send"
+                android:layout_width="@dimen/element_size_normal"
+                android:layout_height="@dimen/element_size_normal"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:background="?selectableItemBackground"
+                android:clickable="true"
+                android:color="?android:textColorSecondary"
+                android:contentDescription="@string/send"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_action_send"/>
+
+            <org.mariotaku.messagebubbleview.library.MessageBubbleView
+                android:id="@+id/edit_text_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_toEndOf="@+id/add_image"
+                android:layout_toLeftOf="@+id/send"
+                android:layout_toRightOf="@+id/add_image"
+                android:layout_toStartOf="@+id/send"
+                app:bubbleColor="?messageBubbleColor"
+                app:caretHeight="8dp"
+                app:caretPosition="topEnd"
+                app:caretWidth="8dp"
+                app:cornerRadius="2dp">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/element_size_normal"
+                    android:padding="@dimen/element_spacing_normal">
+
+                    <org.mariotaku.twidere.view.ComposeEditText
+                        android:id="@+id/edit_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:background="@null"
+                        android:completionThreshold="1"
+                        android:focusable="true"
+                        android:gravity="start|center_vertical"
+                        android:hint="@string/type_to_compose"
+                        android:inputType="textShortMessage|textMultiLine"
+                        android:maxHeight="140dp"
+                        android:singleLine="false"
+                        android:textAppearance="?android:textAppearanceMedium"
+                        android:textColor="?android:textColorPrimary"
+                        android:textColorHint="?android:textColorTertiary">
+
+                        <requestFocus/>
+                    </org.mariotaku.twidere.view.ComposeEditText>
+
+                </FrameLayout>
+            </org.mariotaku.messagebubbleview.library.MessageBubbleView>
+
+        </RelativeLayout>
+    </RelativeLayout>
+
+    <FrameLayout
+        android:id="@+id/recipient_selector_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible"
+        tools:visibility="gone">
+
+        <ListView
+            android:id="@+id/users_search_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingLeft="@dimen/element_spacing_normal"
+            android:paddingRight="@dimen/element_spacing_normal"
+            android:scrollbarStyle="outsideInset"/>
+
+        <LinearLayout
+            android:id="@+id/users_search_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/element_spacing_normal"
+            android:paddingRight="@dimen/element_spacing_normal">
+
+            <org.mariotaku.twidere.view.ActionIconView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:color="?android:textColorSecondary"
+                android:src="@drawable/ic_info_search"/>
+
+            <TextView
+                android:id="@+id/users_search_empty_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="@dimen/element_spacing_normal"
+                android:gravity="center"
+                android:textAppearance="?android:textAppearanceMedium"/>
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/users_search_progress"
+            style="?android:progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"/>
+    </FrameLayout>
 
 </FrameLayout>

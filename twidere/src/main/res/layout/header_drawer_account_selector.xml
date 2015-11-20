@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Twidere - Twitter client for Android
+  ~
+  ~  Copyright (C) 2012-2014 Mariotaku Lee <mariotaku.lee@gmail.com>
+  ~
+  ~  This program is free software: you can redistribute it and/or modify
+  ~  it under the terms of the GNU General Public License as published by
+  ~  the Free Software Foundation, either version 3 of the License, or
+  ~  (at your option) any later version.
+  ~
+  ~  This program is distributed in the hope that it will be useful,
+  ~  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~  GNU General Public License for more details.
+  ~
+  ~  You should have received a copy of the GNU General Public License
+  ~  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:descendantFocusability="blocksDescendants"
+    tools:layout_height="160dp"
+    tools:layout_width="280dp">
+
+    <org.mariotaku.twidere.view.ForegroundImageView
+        android:id="@+id/account_profile_banner"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_alignBottom="@id/profile_container"
+        android:layout_alignTop="@id/profile_container"
+        android:contentDescription="@string/profile_banner"
+        android:focusable="false"
+        android:foreground="@color/drawer_banner_foreground"
+        android:scaleType="centerCrop"
+        tools:src="@drawable/nyan_stars_background" />
+
+    <FrameLayout
+        android:id="@+id/profile_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:focusable="false"
+        android:foreground="?selectableItemBackground">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:focusable="false"
+            android:paddingBottom="@dimen/element_spacing_normal"
+            android:paddingLeft="@dimen/element_spacing_large"
+            android:paddingRight="@dimen/element_spacing_large"
+            android:paddingTop="@dimen/element_spacing_normal">
+
+            <org.mariotaku.twidere.view.ShapedImageView
+                android:id="@+id/profile_image"
+                style="?profileImageStyle"
+                android:layout_width="@dimen/icon_size_profile_image_dashboard_current"
+                android:layout_height="@dimen/icon_size_profile_image_dashboard_current"
+                android:layout_marginBottom="@dimen/element_spacing_mlarge"
+                android:layout_marginTop="@dimen/element_spacing_mlarge"
+                android:focusable="false"
+                app:sivBorder="true"
+                app:sivBorderWidth="2dp"
+                tools:src="@mipmap/ic_launcher" />
+
+            <org.mariotaku.twidere.view.ExtendedRecyclerView
+                android:id="@+id/other_accounts_list"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBottom="@id/profile_image"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:layout_alignTop="@id/profile_image"
+                android:layout_marginBottom="@dimen/element_spacing_large"
+                android:layout_toEndOf="@id/profile_image"
+                android:layout_toRightOf="@id/profile_image"
+                android:focusable="false"
+                tools:visibility="invisible" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_alignParentBottom="true"
+                android:layout_below="@id/profile_image"
+                android:baselineAligned="false"
+                android:focusable="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:focusable="false"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:singleLine="true"
+                        android:textAppearance="?android:textAppearanceSmall"
+                        android:textColor="?attr/textColorDrawerNamePrimary"
+                        android:textStyle="bold"
+                        tools:text="Name" />
+
+                    <TextView
+                        android:id="@+id/screen_name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:singleLine="true"
+                        android:textAppearance="?android:textAppearanceSmall"
+                        android:textColor="?textColorDrawerNameSecondary"
+                        tools:text="\@username" />
+
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/element_size_normal"
+                    android:focusable="false">
+
+                    <android.support.v7.widget.ActionMenuView
+                        android:id="@+id/account_dashboard_menu"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:focusable="true" />
+                </FrameLayout>
+
+
+            </LinearLayout>
+        </RelativeLayout>
+
+        <ImageView
+            android:id="@+id/floating_profile_image_snapshot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="false"
+            android:scaleType="fitCenter"
+            android:visibility="invisible"
+            tools:ignore="ContentDescription" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/no_account_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignBottom="@+id/profile_container"
+        android:layout_alignTop="@+id/profile_container"
+        android:clickable="true"
+        tools:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/no_account" />
+
+    </FrameLayout>
+
+</RelativeLayout>

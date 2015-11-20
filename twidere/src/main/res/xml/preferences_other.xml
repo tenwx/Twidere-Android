@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:title="@string/other_settings">
+
+    <Preference
+        android:fragment="org.mariotaku.twidere.fragment.SettingsDetailsFragment"
+        android:title="@string/usage_statistics">
+        <extra
+            android:name="resid"
+            android:value="@xml/preferences_usage_statistics" />
+    </Preference>
+
+    <org.mariotaku.twidere.preference.SettingsImportExportPreference
+        android:key="import_export_settings"
+        android:title="@string/import_export_settings" />
+
+    <Preference
+        android:fragment="org.mariotaku.twidere.fragment.SettingsDetailsFragment"
+        android:title="@string/scrapyard">
+        <extra
+            android:name="resid"
+            android:value="@xml/preferences_scrapyard" />
+    </Preference>
+    <org.mariotaku.twidere.preference.AutoFixCheckBoxPreference
+        android:defaultValue="false"
+        android:key="i_want_my_stars_back"
+        android:summary="@string/i_want_my_stars_back_summary"
+        android:title="@string/i_want_my_stars_back">
+        <extra
+            android:name="notify_change"
+            android:value="true" />
+    </org.mariotaku.twidere.preference.AutoFixCheckBoxPreference>
+
+</PreferenceScreen>

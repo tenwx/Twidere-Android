@@ -19,64 +19,52 @@
 
 package org.mariotaku.twidere.loader.support;
 
-import static org.mariotaku.twidere.util.Utils.getAccountId;
-import static org.mariotaku.twidere.util.Utils.isFiltered;
-
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import android.support.annotation.NonNull;
 
 import org.mariotaku.twidere.model.ParcelableStatus;
 
-import twitter4j.Paging;
-import twitter4j.ResponseList;
-import twitter4j.Status;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-import twitter4j.User;
-
 import java.util.List;
 
-public class UserTimelineLoader extends Twitter4JStatusesLoader {
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.model.ResponseList;
+import org.mariotaku.twidere.api.twitter.model.Status;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
 
-	private final long mUserId;
-	private final String mUserScreenName;
-	private final boolean mIsMyTimeline;
-	private int mTotalItemsCount;
+import static org.mariotaku.twidere.util.Utils.getAccountId;
+import static org.mariotaku.twidere.util.Utils.isFiltered;
 
-	public UserTimelineLoader(final Context context, final long accountId, final long userId, final String screenName,
-			final long maxId, final long sinceId, final List<ParcelableStatus> data, final String[] savedStatusesArgs,
-			final int tabPosition) {
-		super(context, accountId, maxId, sinceId, data, savedStatusesArgs, tabPosition);
-		mUserId = userId;
-		mUserScreenName = screenName;
-		mIsMyTimeline = userId > 0 ? accountId == userId : accountId == getAccountId(context, screenName);
-	}
+public class UserTimelineLoader extends TwitterAPIStatusesLoader {
 
-	public int getTotalItemsCount() {
-		return mTotalItemsCount;
-	}
+    private final long mUserId;
+    private final String mUserScreenName;
+    private final boolean mIsMyTimeline;
 
-	@Override
-	protected ResponseList<Status> getStatuses(final Twitter twitter, final Paging paging) throws TwitterException {
-		if (twitter == null) return null;
-		final ResponseList<Status> statuses;
-		if (mUserId != -1) {
-			statuses = twitter.getUserTimeline(mUserId, paging);
-		} else if (mUserScreenName != null) {
-			statuses = twitter.getUserTimeline(mUserScreenName, paging);
-		} else
-			return null;
-		if (mTotalItemsCount == -1 && !statuses.isEmpty()) {
-			final User user = statuses.get(0).getUser();
-			if (user != null) {
-				mTotalItemsCount = user.getStatusesCount();
-			}
-		}
-		return statuses;
-	}
+    public UserTimelineLoader(final Context context, final long accountId, final long userId,
+                              final String screenName, final long sinceId, final long maxId,
+                              final List<ParcelableStatus> data, final String[] savedStatusesArgs,
+                              final int tabPosition, boolean fromUser) {
+        super(context, accountId, sinceId, maxId, data, savedStatusesArgs, tabPosition, fromUser);
+        mUserId = userId;
+        mUserScreenName = screenName;
+        mIsMyTimeline = userId > 0 ? accountId == userId : accountId == getAccountId(context, screenName);
+    }
 
-	@Override
-	protected boolean shouldFilterStatus(final SQLiteDatabase database, final ParcelableStatus status) {
-		return !mIsMyTimeline && isFiltered(database, -1, status.text_plain, status.text_html, status.source, -1);
-	}
+    @NonNull
+    @Override
+    protected ResponseList<Status> getStatuses(@NonNull final Twitter twitter, final Paging paging) throws TwitterException {
+        if (mUserId != -1)
+            return twitter.getUserTimeline(mUserId, paging);
+        else if (mUserScreenName != null)
+            return twitter.getUserTimeline(mUserScreenName, paging);
+        else
+            throw new TwitterException("Invalid user");
+    }
+
+    @Override
+    protected boolean shouldFilterStatus(final SQLiteDatabase database, final ParcelableStatus status) {
+        return !mIsMyTimeline && isFiltered(database, -1, status.text_plain, status.text_html, status.source, -1);
+    }
 }

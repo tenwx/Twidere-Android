@@ -19,19 +19,16 @@
 
 package org.mariotaku.twidere.util;
 
-import static org.mariotaku.twidere.annotation.Preference.Type.INVALID;
-
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.support.annotation.NonNull;
+import android.util.Log;
 
+import org.json.JSONException;
 import org.json.JSONObject;
-import org.mariotaku.jsonserializer.JSONFileIO;
-import org.mariotaku.jsonserializer.JSONSerializer;
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.annotation.Preference;
 import org.mariotaku.twidere.constant.SharedPreferenceConstants;
-import org.mariotaku.twidere.model.RawSharedPreferencesData;
-import org.mariotaku.twidere.model.SharedPreferencesData;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -40,143 +37,275 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+import static org.mariotaku.twidere.annotation.Preference.Type.INVALID;
+
 public class DataImportExportUtils implements Constants {
 
-	public static void exportData(final Context context, final File dst, final int flags) throws IOException {
-		if (dst == null) throw new FileNotFoundException();
-		dst.delete();
-		final FileOutputStream fos = new FileOutputStream(dst);
-		final ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(fos));
-		if (hasFlag(flags, FLAG_PREFERENCES)) {
-			writeSharedPreferencesData(zos, context, SHARED_PREFERENCES_NAME, ENTRY_PREFERENCES);
-		}
-		if (hasFlag(flags, FLAG_NICKNAMES)) {
-			writeRawSharedPreferencesData(zos, context, USER_NICKNAME_PREFERENCES_NAME, ENTRY_NICKNAMES);
-		}
-		if (hasFlag(flags, FLAG_USER_COLORS)) {
-			writeRawSharedPreferencesData(zos, context, USER_COLOR_PREFERENCES_NAME, ENTRY_USER_COLORS);
-		}
-		if (hasFlag(flags, FLAG_HOST_MAPPING)) {
-			writeRawSharedPreferencesData(zos, context, HOST_MAPPING_PREFERENCES_NAME, ENTRY_HOST_MAPPING);
-		}
-		zos.finish();
-		zos.flush();
-		Utils.closeSilently(zos);
-		Utils.closeSilently(fos);
-	}
+    public static final String ENTRY_PREFERENCES = "preferences.json";
+    public static final String ENTRY_NICKNAMES = "nicknames.json";
+    public static final String ENTRY_USER_COLORS = "user_colors.json";
+    public static final String ENTRY_HOST_MAPPING = "host_mapping.json";
+    public static final String ENTRY_KEYBOARD_SHORTCUTS = "keyboard_shortcuts.json";
+    public static final String ENTRY_FILTERS = "filters.json";
 
-	public static int getImportedSettingsFlags(final File src) throws IOException {
-		if (src == null) return 0;
-		final ZipFile zipFile = new ZipFile(src);
-		int flags = 0;
-		if (zipFile.getEntry(ENTRY_PREFERENCES) != null) {
-			flags |= FLAG_PREFERENCES;
-		}
-		if (zipFile.getEntry(ENTRY_NICKNAMES) != null) {
-			flags |= FLAG_NICKNAMES;
-		}
-		if (zipFile.getEntry(ENTRY_USER_COLORS) != null) {
-			flags |= FLAG_USER_COLORS;
-		}
-		if (zipFile.getEntry(ENTRY_HOST_MAPPING) != null) {
-			flags |= FLAG_HOST_MAPPING;
-		}
-		zipFile.close();
-		return flags;
-	}
+    public static final int FLAG_PREFERENCES = 0x1;
+    public static final int FLAG_NICKNAMES = 0x2;
+    public static final int FLAG_USER_COLORS = 0x4;
+    public static final int FLAG_HOST_MAPPING = 0x8;
+    public static final int FLAG_KEYBOARD_SHORTCUTS = 0x10;
+    public static final int FLAG_FILTERS = 0x20;
+    public static final int FLAG_ALL = FLAG_PREFERENCES | FLAG_NICKNAMES | FLAG_USER_COLORS
+            | FLAG_HOST_MAPPING | FLAG_KEYBOARD_SHORTCUTS | FLAG_FILTERS;
 
-	public static HashMap<String, Preference> getSupportedPreferencesMap() {
-		final Field[] fields = SharedPreferenceConstants.class.getDeclaredFields();
-		final HashMap<String, Preference> supportedPrefsMap = new HashMap<String, Preference>();
-		for (final Field field : fields) {
-			final Preference annotation = field.getAnnotation(Preference.class);
-			if (Modifier.isStatic(field.getModifiers()) && CompareUtils.classEquals(field.getType(), String.class)
-					&& annotation != null && annotation.exportable() && annotation.type() != INVALID) {
-				try {
-					supportedPrefsMap.put((String) field.get(null), annotation);
-				} catch (final IllegalAccessException e) {
-				} catch (final IllegalArgumentException e) {
-				}
-			}
-		}
-		return supportedPrefsMap;
-	}
+    public static void exportData(final Context context, final File dst, final int flags) throws IOException {
+        if (dst == null) throw new FileNotFoundException();
+        dst.delete();
+        final FileOutputStream fos = new FileOutputStream(dst);
+        final ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(fos));
+        if (hasFlag(flags, FLAG_PREFERENCES)) {
+            exportSharedPreferencesData(zos, context, SHARED_PREFERENCES_NAME, ENTRY_PREFERENCES, new AnnotationProcessStrategy(SharedPreferenceConstants.class));
+        }
+        if (hasFlag(flags, FLAG_NICKNAMES)) {
+            exportSharedPreferencesData(zos, context, USER_NICKNAME_PREFERENCES_NAME, ENTRY_NICKNAMES, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_USER_COLORS)) {
+            exportSharedPreferencesData(zos, context, USER_COLOR_PREFERENCES_NAME, ENTRY_USER_COLORS, ConvertToIntProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_HOST_MAPPING)) {
+            exportSharedPreferencesData(zos, context, HOST_MAPPING_PREFERENCES_NAME, ENTRY_HOST_MAPPING, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_KEYBOARD_SHORTCUTS)) {
+            exportSharedPreferencesData(zos, context, KEYBOARD_SHORTCUTS_PREFERENCES_NAME, ENTRY_KEYBOARD_SHORTCUTS, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        zos.finish();
+        zos.flush();
+        Utils.closeSilently(zos);
+        Utils.closeSilently(fos);
+    }
 
-	public static void importData(final Context context, final File src, final int flags) throws IOException {
-		if (src == null) throw new FileNotFoundException();
-		final ZipFile zipFile = new ZipFile(src);
-		if (hasFlag(flags, FLAG_PREFERENCES)) {
-			readSharedPreferencesData(zipFile, context, SHARED_PREFERENCES_NAME, ENTRY_PREFERENCES);
-		}
-		if (hasFlag(flags, FLAG_NICKNAMES)) {
-			readRawSharedPreferencesData(zipFile, context, USER_NICKNAME_PREFERENCES_NAME, ENTRY_NICKNAMES);
-		}
-		if (hasFlag(flags, FLAG_USER_COLORS)) {
-			readRawSharedPreferencesData(zipFile, context, USER_COLOR_PREFERENCES_NAME, ENTRY_USER_COLORS);
-		}
-		if (hasFlag(flags, FLAG_HOST_MAPPING)) {
-			readRawSharedPreferencesData(zipFile, context, HOST_MAPPING_PREFERENCES_NAME, ENTRY_HOST_MAPPING);
-		}
-		zipFile.close();
-	}
+    public static int getImportedSettingsFlags(final File src) throws IOException {
+        if (src == null) return 0;
+        final ZipFile zipFile = new ZipFile(src);
+        int flags = 0;
+        if (zipFile.getEntry(ENTRY_PREFERENCES) != null) {
+            flags |= FLAG_PREFERENCES;
+        }
+        if (zipFile.getEntry(ENTRY_NICKNAMES) != null) {
+            flags |= FLAG_NICKNAMES;
+        }
+        if (zipFile.getEntry(ENTRY_USER_COLORS) != null) {
+            flags |= FLAG_USER_COLORS;
+        }
+        if (zipFile.getEntry(ENTRY_HOST_MAPPING) != null) {
+            flags |= FLAG_HOST_MAPPING;
+        }
+        if (zipFile.getEntry(ENTRY_KEYBOARD_SHORTCUTS) != null) {
+            flags |= FLAG_KEYBOARD_SHORTCUTS;
+        }
+        if (zipFile.getEntry(ENTRY_FILTERS) != null) {
+            flags |= FLAG_FILTERS;
+        }
+        zipFile.close();
+        return flags;
+    }
 
-	private static byte[] getSerializedRawSharedPreferencesData(final Context context, final String name) {
-		final SharedPreferences prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE);
-		return JSONSerializer.getByteArray(new RawSharedPreferencesData(prefs));
-	}
+    public static HashMap<String, Preference> getSupportedPreferencesMap(Class cls) {
+        final Field[] fields = cls.getDeclaredFields();
+        final HashMap<String, Preference> supportedPrefsMap = new HashMap<>();
+        for (final Field field : fields) {
+            final Preference annotation = field.getAnnotation(Preference.class);
+            if (Modifier.isStatic(field.getModifiers()) && CompareUtils.classEquals(field.getType(), String.class)
+                    && annotation != null && annotation.exportable() && annotation.type() != INVALID) {
+                try {
+                    supportedPrefsMap.put((String) field.get(null), annotation);
+                } catch (final IllegalAccessException | IllegalArgumentException e) {
+                    Log.w(LOGTAG, e);
+                }
+            }
+        }
+        return supportedPrefsMap;
+    }
 
-	private static byte[] getSerializedSharedPreferencesData(final Context context, final String name) {
-		final SharedPreferences prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE);
-		return JSONSerializer.getByteArray(new SharedPreferencesData(prefs));
-	}
+    public static void importData(final Context context, final File src, final int flags) throws IOException {
+        if (src == null) throw new FileNotFoundException();
+        final ZipFile zipFile = new ZipFile(src);
+        if (hasFlag(flags, FLAG_PREFERENCES)) {
+            importSharedPreferencesData(zipFile, context, SHARED_PREFERENCES_NAME, ENTRY_PREFERENCES, new AnnotationProcessStrategy(SharedPreferenceConstants.class));
+        }
+        if (hasFlag(flags, FLAG_NICKNAMES)) {
+            importSharedPreferencesData(zipFile, context, USER_NICKNAME_PREFERENCES_NAME, ENTRY_NICKNAMES, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_USER_COLORS)) {
+            importSharedPreferencesData(zipFile, context, USER_COLOR_PREFERENCES_NAME, ENTRY_USER_COLORS, ConvertToIntProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_HOST_MAPPING)) {
+            importSharedPreferencesData(zipFile, context, HOST_MAPPING_PREFERENCES_NAME, ENTRY_HOST_MAPPING, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags, FLAG_KEYBOARD_SHORTCUTS)) {
+            importSharedPreferencesData(zipFile, context, KEYBOARD_SHORTCUTS_PREFERENCES_NAME, ENTRY_KEYBOARD_SHORTCUTS, ConvertToStringProcessStrategy.SINGLETON);
+        }
+        if (hasFlag(flags,FLAG_FILTERS)) {
 
-	private static boolean hasFlag(final int flags, final int flag) {
-		return (flags & flag) != 0;
-	}
+        }
+        zipFile.close();
+    }
 
-	private static void readRawSharedPreferencesData(final ZipFile zipFile, final Context context,
-			final String preferencesName, final String entryName) throws IOException {
-		final ZipEntry entry = zipFile.getEntry(entryName);
-		if (entry == null) return;
-		final JSONObject json = JSONFileIO.convertJSONObject(zipFile.getInputStream(entry));
-		final RawSharedPreferencesData data = JSONSerializer.createObject(RawSharedPreferencesData.JSON_CREATOR, json);
-		if (data != null) {
-			data.writeToSharedPreferences(context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE));
-		}
-	}
+    private static boolean hasFlag(final int flags, final int flag) {
+        return (flags & flag) != 0;
+    }
 
-	private static void readSharedPreferencesData(final ZipFile zipFile, final Context context,
-			final String preferencesName, final String entryName) throws IOException {
-		final ZipEntry entry = zipFile.getEntry(entryName);
-		if (entry == null) return;
-		final JSONObject json = JSONFileIO.convertJSONObject(zipFile.getInputStream(entry));
-		final SharedPreferencesData data = JSONSerializer.createObject(SharedPreferencesData.JSON_CREATOR, json);
-		if (data != null) {
-			data.writeToSharedPreferences(context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE));
-		}
-	}
+    private static void importSharedPreferencesData(@NonNull final ZipFile zipFile, @NonNull final Context context,
+                                                    @NonNull final String preferencesName, @NonNull final String entryName,
+                                                    @NonNull final ProcessStrategy strategy) throws IOException {
+        final ZipEntry entry = zipFile.getEntry(entryName);
+        if (entry == null) return;
+        final JSONObject json = JsonSerializer.convertJSONObject(zipFile.getInputStream(entry));
+        final Iterator<String> keys = json.keys();
+        final SharedPreferences preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE);
+        final SharedPreferences.Editor editor = preferences.edit();
+        while (keys.hasNext()) {
+            strategy.importValue(json, keys.next(), editor);
+        }
+        editor.apply();
+    }
 
-	private static void writeRawSharedPreferencesData(final ZipOutputStream zos, final Context context,
-			final String preferencesName, final String entryName) throws IOException {
-		final byte[] data = getSerializedRawSharedPreferencesData(context, preferencesName);
-		if (data == null) return;
-		zos.putNextEntry(new ZipEntry(entryName));
-		zos.write(data);
-		zos.closeEntry();
-	}
+    private static void exportSharedPreferencesData(@NonNull final ZipOutputStream zos, final Context context,
+                                                    @NonNull final String preferencesName, @NonNull final String entryName,
+                                                    @NonNull final ProcessStrategy strategy) throws IOException {
+        final SharedPreferences preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE);
+        final Map<String, ?> map = preferences.getAll();
+        zos.putNextEntry(new ZipEntry(entryName));
+        final JSONObject json = new JSONObject();
+        for (String key : map.keySet()) {
+            strategy.exportValue(json, key, preferences);
+        }
+        zos.write(json.toString().getBytes(Charset.defaultCharset()));
+        zos.closeEntry();
+    }
 
-	private static void writeSharedPreferencesData(final ZipOutputStream zos, final Context context,
-			final String preferencesName, final String entryName) throws IOException {
-		final byte[] data = getSerializedSharedPreferencesData(context, preferencesName);
-		if (data == null) return;
-		zos.putNextEntry(new ZipEntry(entryName));
-		zos.write(data);
-		zos.closeEntry();
-	}
+    private interface ProcessStrategy {
+        boolean importValue(JSONObject json, String key, SharedPreferences.Editor editor);
+
+        boolean exportValue(JSONObject json, String key, SharedPreferences preferences);
+    }
+
+    private static final class ConvertToStringProcessStrategy implements ProcessStrategy {
+
+        private static final ProcessStrategy SINGLETON = new ConvertToStringProcessStrategy();
+
+        @Override
+        public boolean importValue(JSONObject json, String key, SharedPreferences.Editor editor) {
+            if (!json.has(key)) return false;
+            editor.putString(key, json.optString(key));
+            return true;
+        }
+
+        @Override
+        public boolean exportValue(JSONObject json, String key, SharedPreferences preferences) {
+            if (!preferences.contains(key)) return false;
+            try {
+                json.putOpt(key, preferences.getString(key, null));
+            } catch (Exception ignore) {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    private static final class ConvertToIntProcessStrategy implements ProcessStrategy {
+
+        private static final ProcessStrategy SINGLETON = new ConvertToIntProcessStrategy();
+
+        @Override
+        public boolean importValue(JSONObject json, String key, SharedPreferences.Editor editor) {
+            if (!json.has(key)) return false;
+            editor.putInt(key, json.optInt(key));
+            return true;
+        }
+
+        @Override
+        public boolean exportValue(JSONObject json, String key, SharedPreferences preferences) {
+            if (!preferences.contains(key)) return false;
+            try {
+                json.put(key, preferences.getInt(key, 0));
+            } catch (Exception ignore) {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    private static final class AnnotationProcessStrategy implements ProcessStrategy {
+
+        private final HashMap<String, Preference> supportedMap;
+
+        AnnotationProcessStrategy(Class cls) {
+            this.supportedMap = getSupportedPreferencesMap(cls);
+        }
+
+        @Override
+        public boolean importValue(JSONObject json, String key, SharedPreferences.Editor editor) {
+            final Preference preference = supportedMap.get(key);
+            if (preference == null || !preference.exportable()) return false;
+            switch (preference.type()) {
+                case BOOLEAN:
+                    editor.putBoolean(key, json.optBoolean(key, preference.defaultBoolean()));
+                    break;
+                case INT:
+                    editor.putInt(key, json.optInt(key, preference.defaultInt()));
+                    break;
+                case LONG:
+                    editor.putLong(key, json.optLong(key, preference.defaultLong()));
+                    break;
+                case FLOAT:
+                    editor.putFloat(key, (float) json.optDouble(key, preference.defaultFloat()));
+                    break;
+                case STRING:
+                    editor.putString(key, json.optString(key, preference.defaultString()));
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        }
+
+        @Override
+        public boolean exportValue(JSONObject json, String key, SharedPreferences preferences) {
+            final Preference preference = supportedMap.get(key);
+            if (preference == null || !preference.exportable()) return false;
+            try {
+                switch (preference.type()) {
+                    case BOOLEAN:
+                        json.put(key, preferences.getBoolean(key, preference.defaultBoolean()));
+                        break;
+                    case INT:
+                        json.put(key, preferences.getInt(key, preference.defaultInt()));
+                        break;
+                    case LONG:
+                        json.put(key, preferences.getLong(key, preference.defaultLong()));
+                        break;
+                    case FLOAT:
+                        json.put(key, preferences.getFloat(key, preference.defaultFloat()));
+                        break;
+                    case STRING:
+                        json.put(key, preferences.getString(key, preference.defaultString()));
+                        break;
+                    default:
+                        break;
+                }
+            } catch (JSONException e) {
+                return false;
+            }
+            return true;
+        }
+    }
 
 }

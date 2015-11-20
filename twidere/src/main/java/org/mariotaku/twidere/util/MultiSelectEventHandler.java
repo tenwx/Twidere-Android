@@ -27,19 +27,20 @@ import android.os.Bundle;
 import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Toast;
 
 import com.twitter.Extractor;
 
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.activity.support.BaseSupportActivity;
-import org.mariotaku.twidere.app.TwidereApplication;
+import org.mariotaku.twidere.activity.support.BaseAppCompatActivity;
 import org.mariotaku.twidere.menu.AccountActionProvider;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
-import org.mariotaku.twidere.model.Account;
+import org.mariotaku.twidere.model.ParcelableAccount;
 import org.mariotaku.twidere.model.ParcelableStatus;
 import org.mariotaku.twidere.model.ParcelableUser;
-import org.mariotaku.twidere.provider.TweetStore.Filters;
+import org.mariotaku.twidere.provider.TwidereDataStore.Filters;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,10 +50,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-import de.keyboardsurfer.android.widget.crouton.Crouton;
-import de.keyboardsurfer.android.widget.crouton.CroutonStyle;
+import javax.inject.Inject;
 
-import static org.mariotaku.twidere.util.ContentValuesCreator.makeFilterdUserContentValues;
 import static org.mariotaku.twidere.util.Utils.getAccountScreenNames;
 import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkDelete;
 import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkInsert;
@@ -60,21 +59,22 @@ import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkInsert
 @SuppressLint("Registered")
 public class MultiSelectEventHandler implements Constants, ActionMode.Callback, MultiSelectManager.Callback {
 
-    private TwidereApplication mApplication;
+    @Inject
+    AsyncTwitterWrapper mTwitterWrapper;
 
-    private AsyncTwitterWrapper mTwitterWrapper;
-
-    private MultiSelectManager mMultiSelectManager;
+    @Inject
+    MultiSelectManager mMultiSelectManager;
 
     private ActionMode mActionMode;
 
-    private final BaseSupportActivity mActivity;
+    private final BaseAppCompatActivity mActivity;
 
     private AccountActionProvider mAccountActionProvider;
 
     public static final int MENU_GROUP = 201;
 
-    public MultiSelectEventHandler(final BaseSupportActivity activity) {
+    public MultiSelectEventHandler(final BaseAppCompatActivity activity) {
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(activity)).build().inject(this);
         mActivity = activity;
     }
 
@@ -82,9 +82,6 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
      * Call before super.onCreate
      */
     public void dispatchOnCreate() {
-        mApplication = mActivity.getTwidereApplication();
-        mTwitterWrapper = mApplication.getTwitterWrapper();
-        mMultiSelectManager = mApplication.getMultiSelectManager();
     }
 
     /**
@@ -107,12 +104,12 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
         final List<Object> selectedItems = mMultiSelectManager.getSelectedItems();
         if (selectedItems.isEmpty()) return false;
         switch (item.getItemId()) {
-            case MENU_REPLY: {
+            case R.id.reply: {
                 final Extractor extractor = new Extractor();
                 final Intent intent = new Intent(INTENT_ACTION_REPLY_MULTIPLE);
                 final Bundle bundle = new Bundle();
                 final String[] accountScreenNames = getAccountScreenNames(mActivity);
-                final Collection<String> allMentions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
+                final Collection<String> allMentions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 for (final Object object : selectedItems) {
                     if (object instanceof ParcelableStatus) {
                         final ParcelableStatus status = (ParcelableStatus) object;
@@ -137,31 +134,29 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
                 mode.finish();
                 break;
             }
-            case MENU_MUTE_USER: {
+            case R.id.mute_user: {
                 final ContentResolver resolver = mActivity.getContentResolver();
-                final ArrayList<ContentValues> valuesList = new ArrayList<ContentValues>();
-                final Set<Long> userIds = new HashSet<Long>();
+                final ArrayList<ContentValues> valuesList = new ArrayList<>();
+                final Set<Long> userIds = new HashSet<>();
                 for (final Object object : selectedItems) {
                     if (object instanceof ParcelableStatus) {
                         final ParcelableStatus status = (ParcelableStatus) object;
                         userIds.add(status.user_id);
-                        valuesList.add(makeFilterdUserContentValues(status));
+                        valuesList.add(ContentValuesCreator.createFilteredUser(status));
                     } else if (object instanceof ParcelableUser) {
                         final ParcelableUser user = (ParcelableUser) object;
                         userIds.add(user.id);
-                        valuesList.add(makeFilterdUserContentValues(user));
-                    } else {
-                        continue;
+                        valuesList.add(ContentValuesCreator.createFilteredUser(user));
                     }
                 }
                 bulkDelete(resolver, Filters.Users.CONTENT_URI, Filters.Users.USER_ID, userIds, null, false);
                 bulkInsert(resolver, Filters.Users.CONTENT_URI, valuesList);
-                Crouton.showText(mActivity, R.string.message_users_muted, CroutonStyle.INFO);
+                Toast.makeText(mActivity, R.string.message_users_muted, Toast.LENGTH_SHORT).show();
                 mode.finish();
                 mActivity.sendBroadcast(new Intent(BROADCAST_MULTI_MUTESTATE_CHANGED));
                 break;
             }
-            case MENU_BLOCK: {
+            case R.id.block: {
                 final long accountId = mMultiSelectManager.getAccountId();
                 final long[] userIds = MultiSelectManager.getSelectedUserIds(selectedItems);
                 if (accountId > 0 && userIds != null) {
@@ -170,7 +165,7 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
                 mode.finish();
                 break;
             }
-            case MENU_REPORT_SPAM: {
+            case R.id.report_spam: {
                 final long accountId = mMultiSelectManager.getAccountId();
                 final long[] userIds = MultiSelectManager.getSelectedUserIds(selectedItems);
                 if (accountId > 0 && userIds != null) {
@@ -183,10 +178,10 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
         if (item.getGroupId() == AccountActionProvider.MENU_GROUP) {
             final Intent intent = item.getIntent();
             if (intent == null || !intent.hasExtra(EXTRA_ACCOUNT)) return false;
-            final Account account = intent.getParcelableExtra(EXTRA_ACCOUNT);
+            final ParcelableAccount account = intent.getParcelableExtra(EXTRA_ACCOUNT);
             mMultiSelectManager.setAccountId(account.account_id);
             if (mAccountActionProvider != null) {
-                mAccountActionProvider.setAccountId(account.account_id);
+                mAccountActionProvider.setSelectedAccountIds(account.account_id);
             }
             mode.invalidate();
         }
@@ -195,9 +190,9 @@ public class MultiSelectEventHandler implements Constants, ActionMode.Callback, 
 
     @Override
     public boolean onCreateActionMode(final ActionMode mode, final Menu menu) {
-        new TwidereMenuInflater(mActivity).inflate(R.menu.action_multi_select_contents, menu);
-        mAccountActionProvider = (AccountActionProvider) menu.findItem(MENU_SELECT_ACCOUNT).getActionProvider();
-        mAccountActionProvider.setAccountId(mMultiSelectManager.getFirstSelectAccountId());
+        mode.getMenuInflater().inflate(R.menu.action_multi_select_contents, menu);
+        mAccountActionProvider = (AccountActionProvider) menu.findItem(R.id.select_account).getActionProvider();
+        mAccountActionProvider.setSelectedAccountIds(mMultiSelectManager.getFirstSelectAccountId());
         return true;
     }
 

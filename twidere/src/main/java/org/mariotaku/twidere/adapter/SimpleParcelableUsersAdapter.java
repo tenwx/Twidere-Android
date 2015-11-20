@@ -20,33 +20,30 @@
 package org.mariotaku.twidere.adapter;
 
 import android.content.Context;
-import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
 
 import org.mariotaku.twidere.R;
 import org.mariotaku.twidere.adapter.iface.IBaseAdapter;
-import org.mariotaku.twidere.app.TwidereApplication;
 import org.mariotaku.twidere.model.ParcelableUser;
-import org.mariotaku.twidere.util.ImageLoaderWrapper;
 import org.mariotaku.twidere.view.holder.TwoLineWithIconViewHolder;
 
 import java.util.List;
 
-import static org.mariotaku.twidere.util.UserColorNicknameUtils.getUserNickname;
 import static org.mariotaku.twidere.util.Utils.configBaseAdapter;
 import static org.mariotaku.twidere.util.Utils.getUserTypeIconRes;
 
 public class SimpleParcelableUsersAdapter extends BaseArrayAdapter<ParcelableUser> implements IBaseAdapter {
 
-    private final ImageLoaderWrapper mImageLoader;
     private final Context mContext;
 
     public SimpleParcelableUsersAdapter(final Context context) {
-        super(context, R.layout.list_item_two_line);
+        this(context, R.layout.list_item_user);
+    }
+
+    public SimpleParcelableUsersAdapter(final Context context, final int layoutRes) {
+        super(context, layoutRes);
         mContext = context;
-        final TwidereApplication app = TwidereApplication.getInstance(context);
-        mImageLoader = app.getImageLoaderWrapper();
         configBaseAdapter(context, this);
     }
 
@@ -71,12 +68,10 @@ public class SimpleParcelableUsersAdapter extends BaseArrayAdapter<ParcelableUse
 
         holder.text1.setCompoundDrawablesWithIntrinsicBounds(0, 0,
                 getUserTypeIconRes(user.is_verified, user.is_protected), 0);
-        final String nick = getUserNickname(mContext, user.id);
-        holder.text1.setText(TextUtils.isEmpty(nick) ? user.name : isNicknameOnly() ? nick : mContext.getString(
-                R.string.name_with_nickname, user.name, nick));
+        holder.text1.setText(mUserColorNameManager.getUserNickname(user.id, user.name));
         holder.text2.setText("@" + user.screen_name);
-        holder.icon.setVisibility(isDisplayProfileImage() ? View.VISIBLE : View.GONE);
-        if (isDisplayProfileImage()) {
+        holder.icon.setVisibility(isProfileImageDisplayed() ? View.VISIBLE : View.GONE);
+        if (isProfileImageDisplayed()) {
             mImageLoader.displayProfileImage(holder.icon, user.profile_image_url);
         } else {
             mImageLoader.cancelDisplayTask(holder.icon);
@@ -88,13 +83,13 @@ public class SimpleParcelableUsersAdapter extends BaseArrayAdapter<ParcelableUse
         setData(data, false);
     }
 
-    public void setData(final List<ParcelableUser> data, final boolean clear_old) {
-        if (clear_old) {
+    public void setData(final List<ParcelableUser> data, final boolean clearOld) {
+        if (clearOld) {
             clear();
         }
         if (data == null) return;
         for (final ParcelableUser user : data) {
-            if (clear_old || findItem(user.id) == null) {
+            if (clearOld || findItemPosition(user.id) < 0) {
                 add(user);
             }
         }

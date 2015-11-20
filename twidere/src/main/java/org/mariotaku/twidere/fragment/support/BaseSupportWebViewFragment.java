@@ -21,43 +21,97 @@ package org.mariotaku.twidere.fragment.support;
 
 import android.annotation.SuppressLint;
 import android.os.Bundle;
-import android.support.v4.app.FragmentActivity;
-import android.view.Menu;
-import android.view.MenuInflater;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.activity.iface.IThemedActivity;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
-import org.mariotaku.twidere.util.accessor.WebSettingsAccessor;
+import org.mariotaku.twidere.util.support.WebSettingsSupport;
 import org.mariotaku.twidere.util.webkit.DefaultWebViewClient;
 
 @SuppressLint("SetJavaScriptEnabled")
-public class BaseSupportWebViewFragment extends SupportWebViewFragment implements Constants {
+public class BaseSupportWebViewFragment extends BaseSupportFragment implements Constants {
+
+    private WebView mWebView;
+    private boolean mIsWebViewAvailable;
 
     @Override
     public void onActivityCreated(final Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
         final WebView view = getWebView();
-        view.setWebViewClient(new DefaultWebViewClient(getActivity()));
+        view.setWebViewClient(createWebViewClient());
         final WebSettings settings = view.getSettings();
         settings.setBuiltInZoomControls(true);
         settings.setJavaScriptEnabled(true);
-        WebSettingsAccessor.setAllowUniversalAccessFromFileURLs(settings, true);
+        WebSettingsSupport.setAllowUniversalAccessFromFileURLs(settings, true);
     }
 
+
+    protected WebViewClient createWebViewClient() {
+        return new DefaultWebViewClient(getActivity());
+    }
+
+    /**
+     * Called to instantiate the view. Creates and returns the WebView.
+     */
     @Override
-    public final void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        final FragmentActivity activity = getActivity();
-        if (activity instanceof IThemedActivity) {
-            onCreateOptionsMenu(menu, ((IThemedActivity) activity).getTwidereMenuInflater());
-        } else {
-            super.onCreateOptionsMenu(menu, inflater);
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        if (mWebView != null) {
+            mWebView.destroy();
         }
+        mWebView = new WebView(getActivity());
+        mIsWebViewAvailable = true;
+        return mWebView;
     }
 
-    public void onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater) {
+    /**
+     * Called when the fragment is visible to the user and actively running. Resumes the WebView.
+     */
+    @Override
+    public void onPause() {
+        super.onPause();
+        mWebView.onPause();
+    }
 
+    /**
+     * Called when the fragment is no longer resumed. Pauses the WebView.
+     */
+    @Override
+    public void onResume() {
+        mWebView.onResume();
+        super.onResume();
+    }
+
+    /**
+     * Called when the WebView has been detached from the fragment.
+     * The WebView is no longer available after this time.
+     */
+    @Override
+    public void onDestroyView() {
+        mIsWebViewAvailable = false;
+        super.onDestroyView();
+    }
+
+    /**
+     * Called when the fragment is no longer in use. Destroys the internal state of the WebView.
+     */
+    @Override
+    public void onDestroy() {
+        if (mWebView != null) {
+            mWebView.destroy();
+            mWebView = null;
+        }
+        super.onDestroy();
+    }
+
+    /**
+     * Gets the WebView.
+     */
+    public WebView getWebView() {
+        return mIsWebViewAvailable ? mWebView : null;
     }
 }

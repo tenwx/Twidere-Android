@@ -19,80 +19,47 @@
 
 package org.mariotaku.twidere.util;
 
-import static org.mariotaku.twidere.util.ServiceUtils.bindToService;
-
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.os.RemoteException;
 
-import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.IMediaUploader;
 import org.mariotaku.twidere.model.MediaUploadResult;
 import org.mariotaku.twidere.model.ParcelableStatusUpdate;
 import org.mariotaku.twidere.model.UploaderMediaItem;
 
-public final class MediaUploaderInterface implements Constants, IMediaUploader {
+public final class MediaUploaderInterface extends AbsServiceInterface<IMediaUploader> implements IMediaUploader {
+    protected MediaUploaderInterface(Context context, String shortenerName) {
+        super(context, shortenerName);
+    }
 
-	private IMediaUploader mUploader;
+    public static MediaUploaderInterface getInstance(final Application application, final String uploaderName) {
+        if (uploaderName == null) return null;
+        final Intent intent = new Intent(INTENT_ACTION_EXTENSION_UPLOAD_MEDIA);
+        final ComponentName component = ComponentName.unflattenFromString(uploaderName);
+        intent.setComponent(component);
+        if (application.getPackageManager().queryIntentServices(intent, 0).size() != 1) return null;
+        return new MediaUploaderInterface(application, uploaderName);
+    }
 
-	private final ServiceConnection mConntecion = new ServiceConnection() {
+    @Override
+    public MediaUploadResult upload(final ParcelableStatusUpdate status, final UploaderMediaItem[] media)
+            throws RemoteException {
+        final IMediaUploader iface = getInterface();
+        if (iface == null) return null;
+        try {
+            return iface.upload(status, media);
+        } catch (final RemoteException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 
-		@Override
-		public void onServiceConnected(final ComponentName service, final IBinder obj) {
-			mUploader = IMediaUploader.Stub.asInterface(obj);
-		}
-
-		@Override
-		public void onServiceDisconnected(final ComponentName service) {
-			mUploader = null;
-		}
-	};
-
-	private MediaUploaderInterface(final Context context, final String uploader_name) {
-		final Intent intent = new Intent(INTENT_ACTION_EXTENSION_UPLOAD_MEDIA);
-		final ComponentName component = ComponentName.unflattenFromString(uploader_name);
-		intent.setComponent(component);
-		bindToService(context, intent, mConntecion);
-	}
-
-	@Override
-	public IBinder asBinder() {
-		// Useless here
-		return mUploader.asBinder();
-	}
-
-	@Override
-	public MediaUploadResult upload(final ParcelableStatusUpdate status, final UploaderMediaItem[] medias)
-			throws RemoteException {
-		if (mUploader == null) return null;
-		try {
-			return mUploader.upload(status, medias);
-		} catch (final RemoteException e) {
-			e.printStackTrace();
-		}
-		return null;
-	}
-
-	public void waitForService() {
-		while (mUploader == null) {
-			try {
-				Thread.sleep(100L);
-			} catch (final InterruptedException e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
-	public static MediaUploaderInterface getInstance(final Application application, final String uploaderName) {
-		if (uploaderName == null) return null;
-		final Intent intent = new Intent(INTENT_ACTION_EXTENSION_UPLOAD_MEDIA);
-		final ComponentName component = ComponentName.unflattenFromString(uploaderName);
-		intent.setComponent(component);
-		if (application.getPackageManager().queryIntentServices(intent, 0).size() != 1) return null;
-		return new MediaUploaderInterface(application, uploaderName);
-	}
+    @Override
+    protected IMediaUploader onServiceConnected(ComponentName service, IBinder obj) {
+        return IMediaUploader.Stub.asInterface(obj);
+    }
 }

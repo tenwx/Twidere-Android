@@ -19,8 +19,6 @@
 
 package org.mariotaku.twidere.util;
 
-import static android.text.TextUtils.isEmpty;
-
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -28,10 +26,13 @@ import android.os.Binder;
 import android.os.Process;
 import android.text.TextUtils;
 
+import org.mariotaku.twidere.BuildConfig;
 import org.mariotaku.twidere.Constants;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import static android.text.TextUtils.isEmpty;
 
 public class PermissionsManager implements Constants {
 
@@ -47,10 +48,10 @@ public class PermissionsManager implements Constants {
 		mPackageManager = context.getPackageManager();
 	}
 
-	public boolean accept(final String package_name, final String[] permissions) {
-		if (package_name == null || permissions == null) return false;
+	public boolean accept(final String packageName, final String[] permissions) {
+		if (packageName == null || permissions == null) return false;
 		final SharedPreferences.Editor editor = mPreferences.edit();
-		editor.putString(package_name, ArrayUtils.toString(permissions, '|', false));
+		editor.putString(packageName, TwidereArrayUtils.toString(permissions, '|', false));
 		return editor.commit();
 	}
 
@@ -64,7 +65,7 @@ public class PermissionsManager implements Constants {
 		if (checkSignature(uid)) return true;
 		final String pname = getPackageNameByUid(uid);
 		final String[] permissions = getPermissions(pname);
-		return ArrayUtils.contains(permissions, requiredPermissions);
+		return TwidereArrayUtils.contains(permissions, requiredPermissions);
 	}
 
 	public boolean checkPermission(final String pname, final String... requiredPermissions) {
@@ -72,17 +73,16 @@ public class PermissionsManager implements Constants {
 		if (mContext.getPackageName().equals(pname)) return true;
 		if (checkSignature(pname)) return true;
 		final String[] permissions = getPermissions(pname);
-		return ArrayUtils.contains(permissions, requiredPermissions);
+		return TwidereArrayUtils.contains(permissions, requiredPermissions);
 	}
 
 	public boolean checkSignature(final int uid) {
-		final String pname = getPackageNameByUid(uid);
-		return checkSignature(pname);
+        return checkSignature(getPackageNameByUid(uid));
 	}
 
 	public boolean checkSignature(final String pname) {
 		if (mContext.getPackageName().equals(pname)) return true;
-		if (Utils.isDebugBuild()) return false;
+		if (BuildConfig.DEBUG) return false;
 		return mPackageManager.checkSignatures(pname, mContext.getPackageName()) == PackageManager.SIGNATURE_MATCH;
 	}
 
@@ -95,7 +95,7 @@ public class PermissionsManager implements Constants {
 	}
 
 	public Map<String, String> getAll() {
-		final Map<String, String> map = new HashMap<String, String>();
+		final Map<String, String> map = new HashMap<>();
 		for (final Map.Entry<String, ?> entry : mPreferences.getAll().entrySet()) {
 			if (entry.getValue() instanceof String) {
 				map.put(entry.getKey(), (String) entry.getValue());
@@ -130,7 +130,7 @@ public class PermissionsManager implements Constants {
 	}
 
 	public static boolean hasPermissions(final String[] permissions, final String... requiredPermissions) {
-		return ArrayUtils.contains(permissions, requiredPermissions);
+		return TwidereArrayUtils.contains(permissions, requiredPermissions);
 	}
 
 	public static boolean isPermissionValid(final String permissionsString) {

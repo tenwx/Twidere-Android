@@ -23,23 +23,29 @@ import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.webkit.WebViewFragment;
 
 import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.util.accessor.WebSettingsAccessor;
+import org.mariotaku.twidere.util.support.WebSettingsSupport;
 import org.mariotaku.twidere.util.webkit.DefaultWebViewClient;
 
 @SuppressLint("SetJavaScriptEnabled")
 public class BaseWebViewFragment extends WebViewFragment implements Constants {
 
-	@Override
-	public void onActivityCreated(final Bundle savedInstanceState) {
-		super.onActivityCreated(savedInstanceState);
-		final WebView view = getWebView();
-		view.setWebViewClient(new DefaultWebViewClient(getActivity()));
-		final WebSettings settings = view.getSettings();
-		settings.setBuiltInZoomControls(true);
-		settings.setJavaScriptEnabled(true);
-		WebSettingsAccessor.setAllowUniversalAccessFromFileURLs(settings, true);
-	}
+    @Override
+    public void onActivityCreated(final Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+        final WebView view = getWebView();
+        view.setWebViewClient(createWebViewClient());
+        final WebSettings settings = view.getSettings();
+        settings.setBuiltInZoomControls(true);
+        settings.setJavaScriptEnabled(true);
+        WebSettingsSupport.setAllowUniversalAccessFromFileURLs(settings, true);
+    }
+
+
+    protected WebViewClient createWebViewClient() {
+        return new DefaultWebViewClient(getActivity());
+    }
 }

@@ -20,59 +20,73 @@
 package org.mariotaku.twidere.task;
 
 import android.content.Context;
-import android.content.Intent;
+import android.os.AsyncTask;
+
+import com.squareup.otto.Bus;
 
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.util.AsyncTaskManager;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
+import org.mariotaku.twidere.util.message.TaskStateChangedEvent;
 
+import javax.inject.Inject;
+
+@Deprecated
 public abstract class ManagedAsyncTask<Params, Progress, Result> extends AsyncTask<Params, Progress, Result> implements
-		Constants {
+        Constants {
 
-	private final AsyncTaskManager manager;
-	private final Context context;
-	private final String tag;
+    @Inject
+    protected AsyncTaskManager manager;
+    @Inject
+    protected Bus bus;
+    private final Context context;
+    private final String tag;
 
-	public ManagedAsyncTask(final Context context, final AsyncTaskManager manager) {
-		this(context, manager, null);
-	}
+    public ManagedAsyncTask(final Context context) {
+        this(context, null);
+    }
 
-	public ManagedAsyncTask(final Context context, final AsyncTaskManager manager, final String tag) {
-		super(manager.getHandler());
-		this.manager = manager;
-		this.context = context;
-		this.tag = tag;
-	}
+    public ManagedAsyncTask(final Context context, final String tag) {
+        //noinspection unchecked
+        DaggerGeneralComponent.builder()
+                .applicationModule(ApplicationModule.get(context))
+                .build()
+                .inject((ManagedAsyncTask<Object, Object, Object>) this);
+        this.context = context;
+        this.tag = tag;
+    }
 
-	public Context getContext() {
-		return context;
-	}
+    public Context getContext() {
+        return context;
+    }
 
-	public String getTag() {
-		return tag;
-	}
+    public String getTag() {
+        return tag;
+    }
 
-	@Override
-	protected void finalize() throws Throwable {
-		manager.remove(hashCode());
-		super.finalize();
-	}
+    @Override
+    protected void finalize() throws Throwable {
+        manager.remove(hashCode());
+        super.finalize();
+    }
 
-	@Override
-	protected void onCancelled() {
-		super.onCancelled();
-		context.sendBroadcast(new Intent(BROADCAST_TASK_STATE_CHANGED));
-	}
+    @Override
+    protected void onCancelled() {
+        super.onCancelled();
+        bus.post(new TaskStateChangedEvent());
+    }
 
-	@Override
-	protected void onPostExecute(final Result result) {
-		super.onPostExecute(result);
-		context.sendBroadcast(new Intent(BROADCAST_TASK_STATE_CHANGED));
-	}
+    @Override
+    protected void onPostExecute(final Result result) {
+        super.onPostExecute(result);
+        bus.post(new TaskStateChangedEvent());
+    }
 
-	@Override
-	protected void onPreExecute() {
-		super.onPreExecute();
-		context.sendBroadcast(new Intent(BROADCAST_TASK_STATE_CHANGED));
-	}
+    @Override
+    protected void onPreExecute() {
+        super.onPreExecute();
+        bus.post(new TaskStateChangedEvent());
+    }
 
 }

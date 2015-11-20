@@ -25,26 +25,20 @@ import android.view.ViewGroup;
 
 import org.mariotaku.twidere.R;
 import org.mariotaku.twidere.adapter.iface.IBaseAdapter;
-import org.mariotaku.twidere.app.TwidereApplication;
 import org.mariotaku.twidere.model.ParcelableUserList;
-import org.mariotaku.twidere.util.ImageLoaderWrapper;
 import org.mariotaku.twidere.view.holder.TwoLineWithIconViewHolder;
 
 import java.util.List;
 
 import static org.mariotaku.twidere.util.Utils.configBaseAdapter;
-import static org.mariotaku.twidere.util.Utils.getDisplayName;
 
 public class SimpleParcelableUserListsAdapter extends BaseArrayAdapter<ParcelableUserList> implements IBaseAdapter {
 
     private final Context mContext;
-    private final ImageLoaderWrapper mImageLoader;
 
     public SimpleParcelableUserListsAdapter(final Context context) {
         super(context, R.layout.list_item_two_line);
         mContext = context;
-        final TwidereApplication app = TwidereApplication.getInstance(context);
-        mImageLoader = app.getImageLoaderWrapper();
         configBaseAdapter(context, this);
     }
 
@@ -69,16 +63,16 @@ public class SimpleParcelableUserListsAdapter extends BaseArrayAdapter<Parcelabl
             view.setTag(holder);
         }
 
-        // Clear images in prder to prevent images in recycled view shown.
+        // Clear images in order to prevent images in recycled view shown.
         holder.icon.setImageDrawable(null);
 
         final ParcelableUserList user_list = getItem(position);
-        final String display_name = getDisplayName(mContext, user_list.user_id, user_list.user_name,
-                user_list.user_screen_name, isDisplayNameFirst(), isNicknameOnly(), false);
+        final String display_name = mUserColorNameManager.getDisplayName(user_list, isDisplayNameFirst(),
+                false);
         holder.text1.setText(user_list.name);
         holder.text2.setText(mContext.getString(R.string.created_by, display_name));
-        holder.icon.setVisibility(isDisplayProfileImage() ? View.VISIBLE : View.GONE);
-        if (isDisplayProfileImage()) {
+        holder.icon.setVisibility(isProfileImageDisplayed() ? View.VISIBLE : View.GONE);
+        if (isProfileImageDisplayed()) {
             mImageLoader.displayProfileImage(holder.icon, user_list.user_profile_image_url);
         } else {
             mImageLoader.cancelDisplayTask(holder.icon);
@@ -92,7 +86,7 @@ public class SimpleParcelableUserListsAdapter extends BaseArrayAdapter<Parcelabl
         }
         if (data == null) return;
         for (final ParcelableUserList user : data) {
-            if (clear_old || findItem(user.id) == null) {
+            if (clear_old || findItemPosition(user.id) < 0) {
                 add(user);
             }
         }

@@ -19,358 +19,394 @@
 
 package org.mariotaku.twidere.fragment.support;
 
-import static org.mariotaku.twidere.util.Utils.configBaseCardAdapter;
-import static org.mariotaku.twidere.util.Utils.getActivatedAccountIds;
-import static org.mariotaku.twidere.util.Utils.getNewestMessageIdsFromDatabase;
-import static org.mariotaku.twidere.util.Utils.getOldestMessageIdsFromDatabase;
-import static org.mariotaku.twidere.util.Utils.openDirectMessagesConversation;
-
-import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.LoaderManager.LoaderCallbacks;
 import android.support.v4.content.CursorLoader;
 import android.support.v4.content.Loader;
+import android.support.v4.util.LongSparseArray;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.AbsListView;
-import android.widget.ListView;
 
-import org.mariotaku.querybuilder.Columns.Column;
-import org.mariotaku.querybuilder.RawItemArray;
-import org.mariotaku.querybuilder.Where;
+import com.squareup.otto.Subscribe;
+
+import org.mariotaku.sqliteqb.library.Columns.Column;
+import org.mariotaku.sqliteqb.library.Expression;
+import org.mariotaku.sqliteqb.library.RawItemArray;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.adapter.DirectMessageConversationEntriesAdapter;
-import org.mariotaku.twidere.provider.TweetStore.Accounts;
-import org.mariotaku.twidere.provider.TweetStore.DirectMessages;
-import org.mariotaku.twidere.provider.TweetStore.Statuses;
-import org.mariotaku.twidere.task.AsyncTask;
+import org.mariotaku.twidere.activity.iface.IControlBarActivity;
+import org.mariotaku.twidere.activity.support.HomeActivity;
+import org.mariotaku.twidere.adapter.MessageEntriesAdapter;
+import org.mariotaku.twidere.adapter.MessageEntriesAdapter.DirectMessageEntry;
+import org.mariotaku.twidere.adapter.MessageEntriesAdapter.MessageEntriesAdapterListener;
+import org.mariotaku.twidere.adapter.decorator.DividerItemDecoration;
+import org.mariotaku.twidere.provider.TwidereDataStore.Accounts;
+import org.mariotaku.twidere.provider.TwidereDataStore.DirectMessages;
+import org.mariotaku.twidere.provider.TwidereDataStore.DirectMessages.Inbox;
+import org.mariotaku.twidere.provider.TwidereDataStore.Statuses;
+import org.mariotaku.twidere.util.AsyncTaskUtils;
 import org.mariotaku.twidere.util.AsyncTwitterWrapper;
-import org.mariotaku.twidere.util.MultiSelectManager;
+import org.mariotaku.twidere.util.KeyboardShortcutsHandler;
+import org.mariotaku.twidere.util.KeyboardShortcutsHandler.KeyboardShortcutCallback;
+import org.mariotaku.twidere.util.RecyclerViewNavigationHelper;
+import org.mariotaku.twidere.util.Utils;
 import org.mariotaku.twidere.util.content.SupportFragmentReloadCursorObserver;
+import org.mariotaku.twidere.util.message.GetMessagesTaskEvent;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
-public class DirectMessagesFragment extends BasePullToRefreshListFragment implements LoaderCallbacks<Cursor> {
+import static org.mariotaku.twidere.util.Utils.openMessageConversation;
 
-	private final SupportFragmentReloadCursorObserver mReloadContentObserver = new SupportFragmentReloadCursorObserver(
-			this, 0, this);
+public class DirectMessagesFragment extends AbsContentListRecyclerViewFragment<MessageEntriesAdapter>
+        implements LoaderCallbacks<Cursor>, MessageEntriesAdapterListener, KeyboardShortcutCallback {
 
-	private final BroadcastReceiver mStatusReceiver = new BroadcastReceiver() {
+    // Listeners
+    private final SupportFragmentReloadCursorObserver mReloadContentObserver = new SupportFragmentReloadCursorObserver(
+            this, 0, this);
 
-		@Override
-		public void onReceive(final Context context, final Intent intent) {
-			if (getActivity() == null || !isAdded() || isDetached()) return;
-			final String action = intent.getAction();
-			if (BROADCAST_TASK_STATE_CHANGED.equals(action)) {
-				updateRefreshState();
-			}
-		}
-	};
+    private RemoveUnreadCountsTask mRemoveUnreadCountsTask;
+    private RecyclerViewNavigationHelper mNavigationHelper;
 
-	private MultiSelectManager mMultiSelectManager;
+    // Data fields
+    private final LongSparseArray<Set<Long>> mUnreadCountsToRemove = new LongSparseArray<>();
+    private final Set<Integer> mReadPositions = Collections.synchronizedSet(new HashSet<Integer>());
+    private int mFirstVisibleItem;
 
-	private SharedPreferences mPreferences;
-	private ListView mListView;
+    @NonNull
+    @Override
+    protected MessageEntriesAdapter onCreateAdapter(Context context, boolean compact) {
+        return new MessageEntriesAdapter(context);
+    }
 
-	private boolean mLoadMoreAutomatically;
+    @Override
+    public void onLoadMoreContents(boolean fromStart) {
+        loadMoreMessages();
+    }
 
-	private DirectMessageConversationEntriesAdapter mAdapter;
-	private int mFirstVisibleItem;
+    @Override
+    public void setControlVisible(boolean visible) {
+        final FragmentActivity activity = getActivity();
+        if (activity instanceof IControlBarActivity) {
+            ((IControlBarActivity) activity).setControlBarVisibleAnimate(visible);
+        }
+    }
 
-	private final Map<Long, Set<Long>> mUnreadCountsToRemove = Collections
-			.synchronizedMap(new HashMap<Long, Set<Long>>());
+    @Override
+    public boolean isRefreshing() {
+        final AsyncTwitterWrapper twitter = mTwitterWrapper;
+        return twitter != null && (twitter.isReceivedDirectMessagesRefreshing() || twitter.isSentDirectMessagesRefreshing());
+    }
 
-	private final Set<Integer> mReadPositions = Collections.synchronizedSet(new HashSet<Integer>());
+    public final LongSparseArray<Set<Long>> getUnreadCountsToRemove() {
+        return mUnreadCountsToRemove;
+    }
 
-	private RemoveUnreadCountsTask mRemoveUnreadCountsTask;
+    @Override
+    public boolean handleKeyboardShortcutRepeat(@NonNull final KeyboardShortcutsHandler handler,
+                                                final int keyCode, final int repeatCount,
+                                                @NonNull final KeyEvent event, int metaState) {
+        return mNavigationHelper.handleKeyboardShortcutRepeat(handler, keyCode, repeatCount, event, metaState);
+    }
 
-	@Override
-	public DirectMessageConversationEntriesAdapter getListAdapter() {
-		return (DirectMessageConversationEntriesAdapter) super.getListAdapter();
-	}
+    @Override
+    public boolean handleKeyboardShortcutSingle(@NonNull final KeyboardShortcutsHandler handler,
+                                                final int keyCode, @NonNull final KeyEvent event, int metaState) {
+        final String action = handler.getKeyAction(CONTEXT_TAG_NAVIGATION, keyCode, event, metaState);
+        if (ACTION_NAVIGATION_REFRESH.equals(action)) {
+            triggerRefresh();
+            return true;
+        }
+        return false;
+    }
 
-	public final Map<Long, Set<Long>> getUnreadCountsToRemove() {
-		return mUnreadCountsToRemove;
-	}
+    @Override
+    public boolean isKeyboardShortcutHandled(@NonNull KeyboardShortcutsHandler handler, int keyCode, @NonNull KeyEvent event, int metaState) {
+        final String action = handler.getKeyAction(CONTEXT_TAG_NAVIGATION, keyCode, event, metaState);
+        return ACTION_NAVIGATION_REFRESH.equals(action) || mNavigationHelper.isKeyboardShortcutHandled(handler, keyCode, event, metaState);
+    }
 
-	@Override
-	public void onActivityCreated(final Bundle savedInstanceState) {
-		mPreferences = getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
-		super.onActivityCreated(savedInstanceState);
-		mMultiSelectManager = getMultiSelectManager();
-		mAdapter = new DirectMessageConversationEntriesAdapter(getActivity());
-		setListAdapter(mAdapter);
-		mListView = getListView();
-		if (!mPreferences.getBoolean(KEY_PLAIN_LIST_STYLE, false)) {
-			mListView.setDivider(null);
-		}
-		mListView.setSelector(android.R.color.transparent);
-		getLoaderManager().initLoader(0, null, this);
-		setListShown(false);
-	}
 
-	@Override
-	public Loader<Cursor> onCreateLoader(final int id, final Bundle args) {
-		final Uri uri = DirectMessages.ConversationEntries.CONTENT_URI;
-		final long account_id = getAccountId();
-		final long[] account_ids = account_id > 0 ? new long[] { account_id } : getActivatedAccountIds(getActivity());
-		final boolean no_account_selected = account_ids.length == 0;
-		setEmptyText(no_account_selected ? getString(R.string.no_account_selected) : null);
-		if (!no_account_selected) {
-			getListView().setEmptyView(null);
-		}
-		final Where account_where = Where.in(new Column(Statuses.ACCOUNT_ID), new RawItemArray(account_ids));
-		return new CursorLoader(getActivity(), uri, null, account_where.getSQL(), null, null);
-	}
+    @Override
+    public Loader<Cursor> onCreateLoader(final int id, final Bundle args) {
+        final Uri uri = DirectMessages.ConversationEntries.CONTENT_URI;
+        final long[] accountIds = getAccountIds();
+        final Expression account_where = Expression.in(new Column(Statuses.ACCOUNT_ID), new RawItemArray(accountIds));
+        return new CursorLoader(getActivity(), uri, null, account_where.getSQL(), null, null);
+    }
 
-	@Override
-	public void onListItemClick(final ListView l, final View v, final int position, final long id) {
-		if (mMultiSelectManager.isActive()) return;
-		final int pos = position - l.getHeaderViewsCount();
-		final long conversationId = mAdapter.getConversationId(pos);
-		final long accountId = mAdapter.getAccountId(pos);
-		mReadPositions.add(pos);
-		removeUnreadCounts();
-		if (conversationId > 0 && accountId > 0) {
-			openDirectMessagesConversation(getActivity(), accountId, conversationId);
-		}
-	}
+    @Override
+    public void onLoadFinished(final Loader<Cursor> loader, final Cursor cursor) {
+        if (getActivity() == null) return;
+        mFirstVisibleItem = -1;
+        final MessageEntriesAdapter adapter = getAdapter();
+        adapter.setCursor(cursor);
+        adapter.setLoadMoreIndicatorVisible(false);
+        adapter.setLoadMoreSupported(cursor != null && cursor.getCount() > 0);
+        adapter.setLoadMoreSupported(hasMoreData(cursor));
+        final long[] accountIds = getAccountIds();
+        adapter.setShowAccountsColor(accountIds.length > 1);
+        setRefreshEnabled(true);
+        if (accountIds.length > 0) {
+            showContent();
+        } else {
+            showError(R.drawable.ic_info_accounts, getString(R.string.no_account_selected));
+        }
+    }
 
-	@Override
-	public void onLoaderReset(final Loader<Cursor> loader) {
-		mAdapter.changeCursor(null);
-	}
+    protected boolean hasMoreData(final Cursor cursor) {
+        return cursor != null && cursor.getCount() != 0;
+    }
 
-	@Override
-	public void onLoadFinished(final Loader<Cursor> loader, final Cursor cursor) {
-		if (getActivity() == null) return;
-		mFirstVisibleItem = -1;
-		mAdapter.changeCursor(cursor);
-		mAdapter.setShowAccountColor(getActivatedAccountIds(getActivity()).length > 1);
-		setListShown(true);
-	}
+    @Override
+    public void onLoaderReset(final Loader<Cursor> loader) {
+        final MessageEntriesAdapter adapter = getAdapter();
+        adapter.setCursor(null);
+    }
 
-	@Override
-	public boolean onOptionsItemSelected(final MenuItem item) {
-		switch (item.getItemId()) {
-			case MENU_COMPOSE: {
-				openDirectMessagesConversation(getActivity(), -1, -1);
-				break;
-			}
-		}
-		return super.onOptionsItemSelected(item);
-	}
+    @Override
+    public void onEntryClick(int position, DirectMessageEntry entry) {
+        Utils.openMessageConversation(getActivity(), entry.account_id, entry.conversation_id);
+    }
 
-	@Override
-	public void onRefreshFromEnd() {
-		if (mLoadMoreAutomatically) return;
-		loadMoreMessages();
-	}
+    @Override
+    public void onUserClick(int position, DirectMessageEntry entry) {
+        Utils.openUserProfile(getActivity(), entry.account_id, entry.conversation_id, entry.screen_name, null);
+    }
 
-	@Override
-	public void onRefreshFromStart() {
-		if (isRefreshing()) return;
-		new AsyncTask<Void, Void, long[][]>() {
+    @Subscribe
+    public void onGetMessagesTaskChanged(GetMessagesTaskEvent event) {
+        if (event.uri.equals(Inbox.CONTENT_URI) && !event.running) {
+            setRefreshing(false);
+            setLoadMoreIndicatorVisible(false);
+            setRefreshEnabled(true);
+        }
+    }
 
-			@Override
-			protected long[][] doInBackground(final Void... params) {
-				final long[][] result = new long[2][];
-				result[0] = getActivatedAccountIds(getActivity());
-				result[1] = getNewestMessageIdsFromDatabase(getActivity(), DirectMessages.Inbox.CONTENT_URI);
-				return result;
-			}
+    @Override
+    public void onRefresh() {
+        triggerRefresh();
+    }
 
-			@Override
-			protected void onPostExecute(final long[][] result) {
-				final AsyncTwitterWrapper twitter = getTwitterWrapper();
-				if (twitter == null) return;
-				twitter.getReceivedDirectMessagesAsync(result[0], null, result[1]);
-				twitter.getSentDirectMessagesAsync(result[0], null, null);
-			}
+    @Override
+    public boolean scrollToStart() {
+        final boolean result = super.scrollToStart();
+        if (result) {
+            final AsyncTwitterWrapper twitter = mTwitterWrapper;
+            final int tabPosition = getTabPosition();
+            if (twitter != null && tabPosition >= 0) {
+                twitter.clearUnreadCountAsync(tabPosition);
+            }
+        }
+        return result;
+    }
 
-		}.execute();
-	}
+    @Override
+    public boolean triggerRefresh() {
+        AsyncTaskUtils.executeTask(new AsyncTask<Object, Object, long[][]>() {
 
-	@Override
-	public void onResume() {
-		super.onResume();
-		mListView.setFastScrollEnabled(mPreferences.getBoolean(KEY_FAST_SCROLL_THUMB, false));
-		configBaseCardAdapter(getActivity(), mAdapter);
-		mLoadMoreAutomatically = mPreferences.getBoolean(KEY_LOAD_MORE_AUTOMATICALLY, false);
-	}
+            @Override
+            protected long[][] doInBackground(final Object... params) {
+                final long[][] result = new long[2][];
+                result[0] = Utils.getActivatedAccountIds(getActivity());
+                result[1] = Utils.getNewestMessageIdsFromDatabase(getActivity(), DirectMessages.Inbox.CONTENT_URI);
+                return result;
+            }
 
-	@Override
-	public void onScroll(final AbsListView view, final int firstVisibleItem, final int visibleItemCount,
-			final int totalItemCount) {
-		super.onScroll(view, firstVisibleItem, visibleItemCount, totalItemCount);
-		addReadPosition(firstVisibleItem);
-	}
+            @Override
+            protected void onPostExecute(final long[][] result) {
+                final AsyncTwitterWrapper twitter = mTwitterWrapper;
+                if (twitter == null) return;
+                twitter.getReceivedDirectMessagesAsync(result[0], null, result[1]);
+                twitter.getSentDirectMessagesAsync(result[0], null, null);
+            }
 
-	@Override
-	public void onScrollStateChanged(final AbsListView view, final int scrollState) {
-		switch (scrollState) {
-			case SCROLL_STATE_FLING:
-			case SCROLL_STATE_TOUCH_SCROLL: {
-				break;
-			}
-			case SCROLL_STATE_IDLE: {
-				for (int i = mListView.getFirstVisiblePosition(), j = mListView.getLastVisiblePosition(); i < j; i++) {
-					mReadPositions.add(i);
-				}
-				removeUnreadCounts();
-				break;
-			}
-		}
-	}
+        });
+        return true;
+    }
 
-	@Override
-	public void onStart() {
-		super.onStart();
-		final ContentResolver resolver = getContentResolver();
-		resolver.registerContentObserver(Accounts.CONTENT_URI, true, mReloadContentObserver);
-		final IntentFilter filter = new IntentFilter();
-		filter.addAction(BROADCAST_TASK_STATE_CHANGED);
-		registerReceiver(mStatusReceiver, filter);
-	}
 
-	@Override
-	public void onStop() {
-		unregisterReceiver(mStatusReceiver);
-		final ContentResolver resolver = getContentResolver();
-		resolver.unregisterContentObserver(mReloadContentObserver);
-		super.onStop();
-	}
+    @Override
+    public void onActivityCreated(final Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+        final View view = getView();
+        if (view == null) throw new AssertionError();
+        final Context viewContext = view.getContext();
+        final MessageEntriesAdapter adapter = getAdapter();
+        final RecyclerView recyclerView = getRecyclerView();
+        final LinearLayoutManager layoutManager = getLayoutManager();
+        mNavigationHelper = new RecyclerViewNavigationHelper(recyclerView, layoutManager, adapter,
+                this);
 
-	@Override
-	public boolean scrollToStart() {
-		final AsyncTwitterWrapper twitter = getTwitterWrapper();
-		final int tabPosition = getTabPosition();
-		if (twitter != null && tabPosition >= 0) {
-			twitter.clearUnreadCountAsync(tabPosition);
-		}
-		return super.scrollToStart();
-	}
+        adapter.setListener(this);
 
-	@Override
-	public void setUserVisibleHint(final boolean isVisibleToUser) {
-		super.setUserVisibleHint(isVisibleToUser);
-		if (isVisibleToUser) {
-			updateRefreshState();
-		}
-	}
+        final DividerItemDecoration itemDecoration = new DividerItemDecoration(viewContext, layoutManager.getOrientation());
+        final Resources res = viewContext.getResources();
+        final int decorPaddingLeft = res.getDimensionPixelSize(R.dimen.element_spacing_normal) * 3
+                + res.getDimensionPixelSize(R.dimen.icon_size_status_profile_image);
+        itemDecoration.setPadding(decorPaddingLeft, 0, 0, 0);
+        itemDecoration.setDecorationEndOffset(1);
+        recyclerView.addItemDecoration(itemDecoration);
+        getLoaderManager().initLoader(0, null, this);
+        showProgress();
+    }
 
-	protected long getAccountId() {
-		final Bundle args = getArguments();
-		return args != null ? args.getLong(EXTRA_ACCOUNT_ID, -1) : -1;
-	}
+    @Override
+    public void onStart() {
+        super.onStart();
+        final ContentResolver resolver = getContentResolver();
+        resolver.registerContentObserver(Accounts.CONTENT_URI, true, mReloadContentObserver);
+        mBus.register(this);
+        final MessageEntriesAdapter adapter = getAdapter();
+        adapter.updateReadState();
+        updateRefreshState();
+    }
 
-	@Override
-	protected void onListTouched() {
-		final AsyncTwitterWrapper twitter = getTwitterWrapper();
-		if (twitter != null) {
-			twitter.clearNotificationAsync(NOTIFICATION_ID_DIRECT_MESSAGES, getAccountId());
-		}
-	}
+    @Override
+    public void onStop() {
+        mBus.unregister(this);
+        final ContentResolver resolver = getContentResolver();
+        resolver.unregisterContentObserver(mReloadContentObserver);
+        super.onStop();
+    }
 
-	@Override
-	protected void onReachedBottom() {
-		if (!mLoadMoreAutomatically) return;
-		loadMoreMessages();
-	}
 
-	protected void updateRefreshState() {
-		final AsyncTwitterWrapper twitter = getTwitterWrapper();
-		if (twitter == null || !getUserVisibleHint()) return;
-		setRefreshing(twitter.isReceivedDirectMessagesRefreshing() || twitter.isSentDirectMessagesRefreshing());
-	}
+    @Override
+    public boolean onOptionsItemSelected(final MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.compose: {
+                openMessageConversation(getActivity(), -1, -1);
+                break;
+            }
+        }
+        return super.onOptionsItemSelected(item);
+    }
 
-	private void addReadPosition(final int firstVisibleItem) {
-		if (mFirstVisibleItem != firstVisibleItem) {
-			mReadPositions.add(firstVisibleItem);
-		}
-		mFirstVisibleItem = firstVisibleItem;
-	}
+    @Override
+    public void setUserVisibleHint(final boolean isVisibleToUser) {
+        super.setUserVisibleHint(isVisibleToUser);
+        final FragmentActivity activity = getActivity();
+        if (isVisibleToUser && activity != null) {
+            for (long accountId : getAccountIds()) {
+                final String tag = "messages_" + accountId;
+                mNotificationManager.cancel(tag, NOTIFICATION_ID_DIRECT_MESSAGES);
+            }
+        }
+    }
 
-	private void addUnreadCountsToRemove(final long account_id, final long id) {
-		if (mUnreadCountsToRemove.containsKey(account_id)) {
-			final Set<Long> counts = mUnreadCountsToRemove.get(account_id);
-			counts.add(id);
-		} else {
-			final Set<Long> counts = new HashSet<Long>();
-			counts.add(id);
-			mUnreadCountsToRemove.put(account_id, counts);
-		}
-	}
+    protected long getAccountId() {
+        final Bundle args = getArguments();
+        return args != null ? args.getLong(EXTRA_ACCOUNT_ID, -1) : -1;
+    }
 
-	private void loadMoreMessages() {
-		if (isRefreshing()) return;
-		new AsyncTask<Void, Void, long[][]>() {
+    protected long[] getAccountIds() {
+        final Bundle args = getArguments();
+        if (args != null && args.getLong(EXTRA_ACCOUNT_ID) > 0) {
+            return new long[]{args.getLong(EXTRA_ACCOUNT_ID)};
+        }
+        final FragmentActivity activity = getActivity();
+        if (activity instanceof HomeActivity) {
+            return ((HomeActivity) activity).getActivatedAccountIds();
+        }
+        return Utils.getActivatedAccountIds(getActivity());
+    }
 
-			@Override
-			protected long[][] doInBackground(final Void... params) {
-				final long[][] result = new long[3][];
-				result[0] = getActivatedAccountIds(getActivity());
-				result[1] = getOldestMessageIdsFromDatabase(getActivity(), DirectMessages.Inbox.CONTENT_URI);
-				result[2] = getOldestMessageIdsFromDatabase(getActivity(), DirectMessages.Outbox.CONTENT_URI);
-				return result;
-			}
+    protected void updateRefreshState() {
+        final AsyncTwitterWrapper twitter = mTwitterWrapper;
+        setRefreshing(twitter != null && (twitter.isReceivedDirectMessagesRefreshing() || twitter.isSentDirectMessagesRefreshing()));
+    }
 
-			@Override
-			protected void onPostExecute(final long[][] result) {
-				final AsyncTwitterWrapper twitter = getTwitterWrapper();
-				if (twitter == null) return;
-				twitter.getReceivedDirectMessagesAsync(result[0], result[1], null);
-				twitter.getSentDirectMessagesAsync(result[0], result[2], null);
-			}
+    private void addReadPosition(final int firstVisibleItem) {
+        if (mFirstVisibleItem != firstVisibleItem) {
+            mReadPositions.add(firstVisibleItem);
+        }
+        mFirstVisibleItem = firstVisibleItem;
+    }
 
-		}.execute();
-	}
+    private void addUnreadCountsToRemove(final long accountId, final long id) {
+        if (mUnreadCountsToRemove.indexOfKey(accountId) < 0) {
+            final Set<Long> counts = new HashSet<>();
+            counts.add(id);
+            mUnreadCountsToRemove.put(accountId, counts);
+        } else {
+            final Set<Long> counts = mUnreadCountsToRemove.get(accountId);
+            counts.add(id);
+        }
+    }
 
-	private void removeUnreadCounts() {
-		if (mRemoveUnreadCountsTask != null && mRemoveUnreadCountsTask.getStatus() == AsyncTask.Status.RUNNING) return;
-		mRemoveUnreadCountsTask = new RemoveUnreadCountsTask(mReadPositions, this);
-		mRemoveUnreadCountsTask.execute();
-	}
+    private void loadMoreMessages() {
+        if (isRefreshing()) return;
+        setLoadMoreIndicatorVisible(true);
+        setRefreshEnabled(false);
+        AsyncTaskUtils.executeTask(new AsyncTask<Object, Object, long[][]>() {
 
-	static class RemoveUnreadCountsTask extends AsyncTask<Void, Void, Void> {
-		private final Set<Integer> read_positions;
-		private final DirectMessageConversationEntriesAdapter adapter;
-		private final DirectMessagesFragment fragment;
+            @Override
+            protected long[][] doInBackground(final Object... params) {
+                final long[][] result = new long[3][];
+                result[0] = Utils.getActivatedAccountIds(getActivity());
+                result[1] = Utils.getOldestMessageIdsFromDatabase(getActivity(), DirectMessages.Inbox.CONTENT_URI);
+                result[2] = Utils.getOldestMessageIdsFromDatabase(getActivity(), DirectMessages.Outbox.CONTENT_URI);
+                return result;
+            }
 
-		RemoveUnreadCountsTask(final Set<Integer> read_positions, final DirectMessagesFragment fragment) {
-			this.read_positions = Collections.synchronizedSet(new HashSet<Integer>(read_positions));
-			this.fragment = fragment;
-			adapter = fragment.getListAdapter();
-		}
+            @Override
+            protected void onPostExecute(final long[][] result) {
+                final AsyncTwitterWrapper twitter = mTwitterWrapper;
+                if (twitter == null) return;
+                twitter.getReceivedDirectMessagesAsync(result[0], result[1], null);
+                twitter.getSentDirectMessagesAsync(result[0], result[2], null);
+            }
 
-		@Override
-		protected Void doInBackground(final Void... params) {
-			for (final int pos : read_positions) {
-				final long id = adapter.getConversationId(pos), account_id = adapter.getAccountId(pos);
-				fragment.addUnreadCountsToRemove(account_id, id);
-			}
-			return null;
-		}
+        });
+    }
 
-		@Override
-		protected void onPostExecute(final Void result) {
-			final AsyncTwitterWrapper twitter = fragment.getTwitterWrapper();
-			if (twitter != null) {
-				twitter.removeUnreadCountsAsync(fragment.getTabPosition(), fragment.getUnreadCountsToRemove());
-			}
-		}
+    private void removeUnreadCounts() {
+        if (mRemoveUnreadCountsTask != null && mRemoveUnreadCountsTask.getStatus() == AsyncTask.Status.RUNNING)
+            return;
+        mRemoveUnreadCountsTask = new RemoveUnreadCountsTask(mReadPositions, this);
+        AsyncTaskUtils.executeTask(mRemoveUnreadCountsTask);
+    }
 
-	}
+    static class RemoveUnreadCountsTask extends AsyncTask<Object, Object, Object> {
+        private final Set<Integer> read_positions;
+        private final MessageEntriesAdapter adapter;
+        private final DirectMessagesFragment fragment;
+
+        RemoveUnreadCountsTask(final Set<Integer> read_positions, final DirectMessagesFragment fragment) {
+            this.read_positions = Collections.synchronizedSet(new HashSet<>(read_positions));
+            this.fragment = fragment;
+            adapter = fragment.getAdapter();
+        }
+
+        @Override
+        protected Object doInBackground(final Object... params) {
+            for (final int pos : read_positions) {
+                final DirectMessageEntry entry = adapter.getEntry(pos);
+                final long id = entry.conversation_id, account_id = entry.account_id;
+                fragment.addUnreadCountsToRemove(account_id, id);
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(final Object result) {
+            final AsyncTwitterWrapper twitter = fragment.mTwitterWrapper;
+            if (twitter != null) {
+                twitter.removeUnreadCountsAsync(fragment.getTabPosition(), fragment.getUnreadCountsToRemove());
+            }
+        }
+
+    }
 
 }

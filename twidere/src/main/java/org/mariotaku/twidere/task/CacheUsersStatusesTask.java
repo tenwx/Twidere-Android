@@ -19,115 +19,82 @@
 
 package org.mariotaku.twidere.task;
 
-import static org.mariotaku.twidere.util.ContentValuesCreator.makeCachedUserContentValues;
-import static org.mariotaku.twidere.util.ContentValuesCreator.makeStatusContentValues;
-import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkDelete;
-import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkInsert;
-
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.os.AsyncTask;
 
 import com.twitter.Extractor;
 
-import org.mariotaku.querybuilder.Where;
 import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.provider.TweetStore.CachedHashtags;
-import org.mariotaku.twidere.provider.TweetStore.CachedStatuses;
-import org.mariotaku.twidere.provider.TweetStore.CachedUsers;
-import org.mariotaku.twidere.provider.TweetStore.Filters;
+import org.mariotaku.twidere.api.twitter.model.Status;
+import org.mariotaku.twidere.provider.TwidereDataStore.CachedHashtags;
+import org.mariotaku.twidere.provider.TwidereDataStore.CachedStatuses;
+import org.mariotaku.twidere.provider.TwidereDataStore.CachedUsers;
+import org.mariotaku.twidere.util.TwitterContentUtils;
 import org.mariotaku.twidere.util.TwitterWrapper.TwitterListResponse;
-
-import twitter4j.User;
+import org.mariotaku.twidere.util.content.ContentResolverUtils;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class CacheUsersStatusesTask extends AsyncTask<Void, Void, Void> implements Constants {
+import static org.mariotaku.twidere.util.ContentValuesCreator.createCachedUser;
+import static org.mariotaku.twidere.util.ContentValuesCreator.createStatus;
+import static org.mariotaku.twidere.util.content.ContentResolverUtils.bulkInsert;
 
-	private final TwitterListResponse<twitter4j.Status>[] all_statuses;
-	private final ContentResolver resolver;
+public class CacheUsersStatusesTask extends AsyncTask<TwitterListResponse<Status>, Object, Object> implements Constants {
 
-	public CacheUsersStatusesTask(final Context context, final TwitterListResponse<twitter4j.Status>... all_statuses) {
-		resolver = context.getContentResolver();
-		this.all_statuses = all_statuses;
-	}
+    private final Context context;
 
-	@Override
-	protected Void doInBackground(final Void... args) {
-		if (all_statuses == null || all_statuses.length == 0) return null;
-		final Extractor extractor = new Extractor();
-		final Set<ContentValues> cachedUsersValues = new HashSet<ContentValues>();
-		final Set<ContentValues> cached_statuses_values = new HashSet<ContentValues>();
-		final Set<ContentValues> hashtag_values = new HashSet<ContentValues>();
-		final Set<Long> userIds = new HashSet<Long>();
-		final Set<Long> status_ids = new HashSet<Long>();
-		final Set<String> hashtags = new HashSet<String>();
-		final Set<User> users = new HashSet<User>();
+    public CacheUsersStatusesTask(final Context context) {
+        this.context = context;
+    }
 
-		for (final TwitterListResponse<twitter4j.Status> values : all_statuses) {
-			if (values == null || values.list == null) {
-				continue;
-			}
-			final List<twitter4j.Status> list = values.list;
-			for (final twitter4j.Status status : list) {
-				if (status == null || status.getId() <= 0) {
-					continue;
-				}
-				status_ids.add(status.getId());
-				cached_statuses_values.add(makeStatusContentValues(status, values.account_id));
-				hashtags.addAll(extractor.extractHashtags(status.getText()));
-				final User user = status.getUser();
-				if (user != null && user.getId() > 0) {
-					users.add(user);
-					final ContentValues filtered_users_values = new ContentValues();
-					filtered_users_values.put(Filters.Users.NAME, user.getName());
-					filtered_users_values.put(Filters.Users.SCREEN_NAME, user.getScreenName());
-					final String filtered_users_where = Where.equals(Filters.Users.USER_ID, user.getId()).getSQL();
-					resolver.update(Filters.Users.CONTENT_URI, filtered_users_values, filtered_users_where, null);
-				}
-			}
-		}
+    @SafeVarargs
+    @Override
+    protected final Object doInBackground(final TwitterListResponse<org.mariotaku.twidere.api.twitter.model.Status>... args) {
+        if (args == null || args.length == 0) return null;
+        final ContentResolver resolver = context.getContentResolver();
+        final Extractor extractor = new Extractor();
 
-		bulkDelete(resolver, CachedStatuses.CONTENT_URI, CachedStatuses.STATUS_ID, status_ids, null, false);
-		bulkInsert(resolver, CachedStatuses.CONTENT_URI, cached_statuses_values);
+        for (final TwitterListResponse<org.mariotaku.twidere.api.twitter.model.Status> response : args) {
+            if (response == null || !response.hasData()) {
+                continue;
+            }
+            final List<org.mariotaku.twidere.api.twitter.model.Status> list = response.getData();
+            for (int bulkIdx = 0, totalSize = list.size(); bulkIdx < totalSize; bulkIdx += 100) {
+                for (int idx = bulkIdx, end = Math.min(totalSize, bulkIdx + ContentResolverUtils.MAX_BULK_COUNT); idx < end; idx++) {
+                    final org.mariotaku.twidere.api.twitter.model.Status status = list.get(idx);
 
-		for (final String hashtag : hashtags) {
-			final ContentValues hashtag_value = new ContentValues();
-			hashtag_value.put(CachedHashtags.NAME, hashtag);
-			hashtag_values.add(hashtag_value);
-		}
-		bulkDelete(resolver, CachedHashtags.CONTENT_URI, CachedHashtags.NAME, hashtags, null, true);
-		bulkInsert(resolver, CachedHashtags.CONTENT_URI, hashtag_values);
+                    final Set<ContentValues> usersValues = new HashSet<>();
+                    final Set<ContentValues> statusesValues = new HashSet<>();
+                    final Set<ContentValues> hashTagValues = new HashSet<>();
 
-		for (final User user : users) {
-			userIds.add(user.getId());
-			cachedUsersValues.add(makeCachedUserContentValues(user));
-		}
-		bulkDelete(resolver, CachedUsers.CONTENT_URI, CachedUsers.USER_ID, userIds, null, false);
-		bulkInsert(resolver, CachedUsers.CONTENT_URI, cachedUsersValues);
-		return null;
-	}
+                    statusesValues.add(createStatus(status, response.accountId));
+                    final String text = TwitterContentUtils.unescapeTwitterStatusText(status.getText());
+                    for (final String hashtag : extractor.extractHashtags(text)) {
+                        final ContentValues values = new ContentValues();
+                        values.put(CachedHashtags.NAME, hashtag);
+                        hashTagValues.add(values);
+                    }
+                    final ContentValues cachedUser = createCachedUser(status.getUser());
+                    cachedUser.put(CachedUsers.LAST_SEEN, System.currentTimeMillis());
+                    usersValues.add(cachedUser);
+                    if (status.isRetweet()) {
+                        final ContentValues cachedRetweetedUser = createCachedUser(status.getRetweetedStatus().getUser());
+                        cachedRetweetedUser.put(CachedUsers.LAST_SEEN, System.currentTimeMillis());
+                        usersValues.add(cachedRetweetedUser);
+                    }
 
-	public static Runnable getRunnable(final Context context,
-			final TwitterListResponse<twitter4j.Status>... all_statuses) {
-		return new ExecuteCacheUserStatusesTaskRunnable(context, all_statuses);
-	}
+                    bulkInsert(resolver, CachedStatuses.CONTENT_URI, statusesValues);
+                    bulkInsert(resolver, CachedHashtags.CONTENT_URI, hashTagValues);
+                    bulkInsert(resolver, CachedUsers.CONTENT_URI, usersValues);
+                }
+            }
+        }
 
-	static class ExecuteCacheUserStatusesTaskRunnable implements Runnable {
-		final Context context;
-		final TwitterListResponse<twitter4j.Status>[] all_statuses;
+        return null;
+    }
 
-		ExecuteCacheUserStatusesTaskRunnable(final Context context,
-				final TwitterListResponse<twitter4j.Status>... all_statuses) {
-			this.context = context;
-			this.all_statuses = all_statuses;
-		}
-
-		@Override
-		public void run() {
-			new CacheUsersStatusesTask(context, all_statuses).execute();
-		}
-	}
 }

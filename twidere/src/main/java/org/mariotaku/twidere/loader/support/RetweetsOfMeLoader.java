@@ -19,50 +19,37 @@
 
 package org.mariotaku.twidere.loader.support;
 
-import static org.mariotaku.twidere.util.Utils.isFiltered;
-
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import android.support.annotation.NonNull;
 
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.model.ResponseList;
+import org.mariotaku.twidere.api.twitter.model.Status;
 import org.mariotaku.twidere.model.ParcelableStatus;
-
-import twitter4j.Paging;
-import twitter4j.ResponseList;
-import twitter4j.Status;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-import twitter4j.User;
 
 import java.util.List;
 
-public class RetweetsOfMeLoader extends Twitter4JStatusesLoader {
+import static org.mariotaku.twidere.util.Utils.isFiltered;
 
-	private int mTotalItemsCount;
+public class RetweetsOfMeLoader extends TwitterAPIStatusesLoader {
 
-	public RetweetsOfMeLoader(final Context context, final long accountId, final long maxId, final long sinceId,
-			final List<ParcelableStatus> data, final String[] savedStatusesArgs, final int tabPosition) {
-		super(context, accountId, maxId, sinceId, data, savedStatusesArgs, tabPosition);
-	}
+    public RetweetsOfMeLoader(final Context context, final long accountId, final long sinceId, final long maxId,
+                              final List<ParcelableStatus> data, final String[] savedStatusesArgs,
+                              final int tabPosition, boolean fromUser) {
+        super(context, accountId, sinceId, maxId, data, savedStatusesArgs, tabPosition, fromUser);
+    }
 
-	public int getTotalItemsCount() {
-		return mTotalItemsCount;
-	}
+    @NonNull
+    @Override
+    protected ResponseList<Status> getStatuses(@NonNull final Twitter twitter, final Paging paging) throws TwitterException {
+        return twitter.getRetweetsOfMe(paging);
+    }
 
-	@Override
-	protected ResponseList<Status> getStatuses(final Twitter twitter, final Paging paging) throws TwitterException {
-		if (twitter == null) return null;
-		final ResponseList<Status> statuses = twitter.getRetweetsOfMe(paging);
-		if (mTotalItemsCount == -1 && !statuses.isEmpty()) {
-			final User user = statuses.get(0).getUser();
-			if (user != null) {
-				mTotalItemsCount = user.getStatusesCount();
-			}
-		}
-		return statuses;
-	}
-
-	@Override
-	protected boolean shouldFilterStatus(final SQLiteDatabase database, final ParcelableStatus status) {
-		return isFiltered(database, -1, status.text_plain, status.text_html, status.source, -1);
-	}
+    @Override
+    protected boolean shouldFilterStatus(final SQLiteDatabase database, final ParcelableStatus status) {
+        return isFiltered(database, -1, status.text_plain, status.text_html, status.source, -1);
+    }
 }

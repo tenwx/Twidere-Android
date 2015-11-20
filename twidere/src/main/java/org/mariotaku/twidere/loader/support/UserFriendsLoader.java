@@ -23,34 +23,35 @@ import android.content.Context;
 
 import org.mariotaku.twidere.model.ParcelableUser;
 
-import twitter4j.CursorPaging;
-import twitter4j.PagableResponseList;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-import twitter4j.User;
-
 import java.util.List;
+
+import org.mariotaku.twidere.api.twitter.model.PageableResponseList;
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
+import org.mariotaku.twidere.api.twitter.model.User;
 
 public class UserFriendsLoader extends CursorSupportUsersLoader {
 
-	private final long mUserId;
-	private final String mScreenName;
+    private final long mUserId;
+    private final String mScreenName;
 
-	public UserFriendsLoader(final Context context, final long account_id, final long user_id,
-			final String screen_name, final long max_id, final List<ParcelableUser> users_list) {
-		super(context, account_id, max_id, users_list);
-		mUserId = user_id;
-		mScreenName = screen_name;
-	}
+    public UserFriendsLoader(final Context context, final long accountId, final long userId,
+                             final String screenName, final long maxId, final List<ParcelableUser> userList,
+                             boolean fromUser) {
+        super(context, accountId, maxId, userList, fromUser);
+        mUserId = userId;
+        mScreenName = screenName;
+    }
 
-	@Override
-	protected PagableResponseList<User> getCursoredUsers(final Twitter twitter, final CursorPaging paging)
-			throws TwitterException {
-		if (twitter == null) return null;
-		if (mUserId > 0)
-			return twitter.getFriendsList(mUserId, paging);
-		else if (mScreenName != null) return twitter.getFriendsList(mScreenName, paging);
-		return null;
-	}
+    @Override
+    protected PageableResponseList<User> getCursoredUsers(final Twitter twitter, final Paging paging)
+            throws TwitterException {
+        if (twitter == null) return null;
+        if (mUserId > 0)
+            return twitter.getFriendsList(mUserId, paging);
+        else if (mScreenName != null) return twitter.getFriendsList(mScreenName, paging);
+        return null;
+    }
 
 }

@@ -28,32 +28,32 @@ import org.mariotaku.twidere.model.ParcelableStatus;
 
 import java.util.List;
 
-public class StatusesListFragment extends ParcelableStatusesListFragment {
+public class StatusesListFragment extends ParcelableStatusesFragment {
 
-	@Override
-	public Loader<List<ParcelableStatus>> newLoaderInstance(final Context context, final Bundle args) {
-		if (args == null) return null;
-		if (args.containsKey(EXTRA_STATUSES)) return new IntentExtrasStatusesLoader(getActivity(), args, getData());
-		return null;
-	}
+    @Override
+    protected Loader<List<ParcelableStatus>> onCreateStatusesLoader(final Context context,
+                                                                    final Bundle args,
+                                                                    final boolean fromUser) {
+        return new IntentExtrasStatusesLoader(context, getArguments(), getAdapterData(), fromUser);
+    }
 
-	@Override
-	protected String[] getSavedStatusesFileArgs() {
-		return null;
-	}
+    @Override
+    protected String[] getSavedStatusesFileArgs() {
+        return null;
+    }
 
-	@Override
-	protected boolean shouldShowAccountColor() {
-		final List<ParcelableStatus> data = getData();
-		if (data != null) {
-			long account_id = -1;
-			for (final ParcelableStatus status : data) {
-				final long prev = account_id;
-				account_id = status.account_id;
-				if (prev > 0 && account_id != prev) return true;
-			}
-		}
-		return false;
-	}
+//    @Override
+//    protected boolean shouldShowAccountColor() {
+//        final List<ParcelableStatus> data = getData();
+//        if (data != null) {
+//            long account_id = -1;
+//            for (final ParcelableStatus status : data) {
+//                final long prev = account_id;
+//                account_id = status.account_id;
+//                if (prev > 0 && account_id != prev) return true;
+//            }
+//        }
+//        return false;
+//    }
 
 }

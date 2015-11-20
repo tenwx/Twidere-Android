@@ -30,39 +30,43 @@ import android.content.Loader;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Paint;
+import android.graphics.PorterDuff.Mode;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.support.v4.content.res.ResourcesCompat;
 import android.text.TextUtils;
 import android.view.ActionMode;
 import android.view.LayoutInflater;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.SubMenu;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.ViewGroup;
+import android.widget.AbsListView;
 import android.widget.AbsListView.MultiChoiceModeListener;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import com.mobeta.android.dslv.DragSortListView;
 import com.mobeta.android.dslv.DragSortListView.DropListener;
 import com.mobeta.android.dslv.SimpleDragSortCursorAdapter;
 
-import org.mariotaku.menucomponent.widget.PopupMenu;
-import org.mariotaku.querybuilder.Columns.Column;
-import org.mariotaku.querybuilder.RawItemArray;
-import org.mariotaku.querybuilder.Where;
+import org.mariotaku.sqliteqb.library.Columns.Column;
+import org.mariotaku.sqliteqb.library.Expression;
+import org.mariotaku.sqliteqb.library.RawItemArray;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.activity.iface.IThemedActivity;
+import org.mariotaku.twidere.activity.SettingsActivity;
 import org.mariotaku.twidere.activity.support.CustomTabEditorActivity;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
 import org.mariotaku.twidere.model.CustomTabConfiguration;
 import org.mariotaku.twidere.model.CustomTabConfiguration.CustomTabConfigurationComparator;
-import org.mariotaku.twidere.model.Panes;
-import org.mariotaku.twidere.provider.TweetStore.Tabs;
+import org.mariotaku.twidere.provider.TwidereDataStore.Tabs;
+import org.mariotaku.twidere.util.SharedPreferencesWrapper;
 import org.mariotaku.twidere.util.ThemeUtils;
 import org.mariotaku.twidere.util.Utils;
-import org.mariotaku.twidere.util.accessor.ViewAccessor;
 import org.mariotaku.twidere.view.holder.TwoLineWithIconViewHolder;
 
 import java.util.ArrayList;
@@ -71,7 +75,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
 
-import static org.mariotaku.twidere.util.CustomTabUtils.getConfiguraionMap;
+import static org.mariotaku.twidere.util.CustomTabUtils.getConfigurationMap;
 import static org.mariotaku.twidere.util.CustomTabUtils.getTabIconDrawable;
 import static org.mariotaku.twidere.util.CustomTabUtils.getTabIconObject;
 import static org.mariotaku.twidere.util.CustomTabUtils.getTabTypeName;
@@ -79,29 +83,26 @@ import static org.mariotaku.twidere.util.CustomTabUtils.isTabAdded;
 import static org.mariotaku.twidere.util.CustomTabUtils.isTabTypeValid;
 import static org.mariotaku.twidere.util.Utils.getAccountIds;
 
-public class CustomTabsFragment extends BaseListFragment implements LoaderCallbacks<Cursor>, Panes.Right,
-        MultiChoiceModeListener, DropListener {
+public class CustomTabsFragment extends BaseFragment implements LoaderCallbacks<Cursor>,
+        MultiChoiceModeListener, OnItemClickListener {
 
     private ContentResolver mResolver;
 
-    private DragSortListView mListView;
-
-    private PopupMenu mPopupMenu;
-
     private CustomTabsAdapter mAdapter;
 
-    @Override
-    public void drop(final int from, final int to) {
-        mAdapter.drop(from, to);
-        mListView.moveCheckState(from, to);
-        saveTabPositions();
-    }
+    private DragSortListView mListView;
+    private View mEmptyView;
+    private View mListContainer, mProgressContainer;
+    private TextView mEmptyText;
+    private ImageView mEmptyIcon;
+
 
     @Override
     public boolean onActionItemClicked(final ActionMode mode, final MenuItem item) {
         switch (item.getItemId()) {
-            case MENU_DELETE: {
-                final Where where = Where.in(new Column(Tabs._ID), new RawItemArray(mListView.getCheckedItemIds()));
+            case R.id.delete: {
+                final long[] itemIds = mListView.getCheckedItemIds();
+                final Expression where = Expression.in(new Column(Tabs._ID), new RawItemArray(itemIds));
                 mResolver.delete(Tabs.CONTENT_URI, where.getSQL(), null);
                 break;
             }
@@ -115,22 +116,59 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
         super.onActivityCreated(savedInstanceState);
         setHasOptionsMenu(true);
         mResolver = getContentResolver();
-        final Activity activity = getActivity();
-        final int themeRes;
-        if (activity instanceof IThemedActivity) {
-            themeRes = ((IThemedActivity) activity).getThemeResourceId();
-        } else {
-            themeRes = ThemeUtils.getSettingsThemeResource(activity);
-        }
-        mAdapter = new CustomTabsAdapter(ThemeUtils.getThemedContextForActionIcons(activity, themeRes));
-        setListAdapter(mAdapter);
-        setEmptyText(getString(R.string.no_tab_hint));
-        mListView = (DragSortListView) getListView();
+        final View view = getView();
+        if (view == null) throw new AssertionError();
+        final Context context = view.getContext();
+        mAdapter = new CustomTabsAdapter(context);
         mListView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE_MODAL);
         mListView.setMultiChoiceModeListener(this);
-        mListView.setDropListener(this);
+        mListView.setOnItemClickListener(this);
+        mListView.setAdapter(mAdapter);
+        mListView.setEmptyView(mEmptyView);
+        mListView.setDropListener(new DropListener() {
+            @Override
+            public void drop(final int from, final int to) {
+                mAdapter.drop(from, to);
+                if (mListView.getChoiceMode() != AbsListView.CHOICE_MODE_NONE) {
+                    mListView.moveCheckState(from, to);
+                }
+                saveTabPositions();
+            }
+        });
+        mEmptyText.setText(R.string.no_tab);
+        mEmptyIcon.setImageResource(R.drawable.ic_info_tab);
         getLoaderManager().initLoader(0, null, this);
         setListShown(false);
+    }
+
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        final Cursor c = mAdapter.getCursor();
+        c.moveToPosition(mAdapter.getCursorPosition(position));
+        final Intent intent = new Intent(INTENT_ACTION_EDIT_TAB);
+        intent.setClass(getActivity(), CustomTabEditorActivity.class);
+        intent.putExtra(EXTRA_ID, c.getLong(c.getColumnIndex(Tabs._ID)));
+        intent.putExtra(EXTRA_TYPE, c.getString(c.getColumnIndex(Tabs.TYPE)));
+        intent.putExtra(EXTRA_NAME, c.getString(c.getColumnIndex(Tabs.NAME)));
+        intent.putExtra(EXTRA_ICON, c.getString(c.getColumnIndex(Tabs.ICON)));
+        intent.putExtra(EXTRA_EXTRAS, c.getString(c.getColumnIndex(Tabs.EXTRAS)));
+        startActivityForResult(intent, REQUEST_EDIT_TAB);
+    }
+
+    private void setListShown(boolean shown) {
+        mListContainer.setVisibility(shown ? View.VISIBLE : View.GONE);
+        mProgressContainer.setVisibility(shown ? View.GONE : View.VISIBLE);
+    }
+
+    @Override
+    public void onViewCreated(View view, Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        mListView = (DragSortListView) view.findViewById(android.R.id.list);
+        mEmptyView = view.findViewById(android.R.id.empty);
+        mEmptyIcon = (ImageView) view.findViewById(R.id.empty_icon);
+        mEmptyText = (TextView) view.findViewById(R.id.empty_text);
+        mListContainer = view.findViewById(R.id.list_container);
+        mProgressContainer = view.findViewById(R.id.progress_container);
     }
 
     @Override
@@ -146,6 +184,7 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
                     values.put(Tabs.EXTRAS, data.getStringExtra(EXTRA_EXTRAS));
                     values.put(Tabs.POSITION, mAdapter.getCount());
                     mResolver.insert(Tabs.CONTENT_URI, values);
+                    SettingsActivity.setShouldNotifyChange(getActivity());
                 }
                 break;
             }
@@ -155,8 +194,9 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
                     values.put(Tabs.NAME, data.getStringExtra(EXTRA_NAME));
                     values.put(Tabs.ICON, data.getStringExtra(EXTRA_ICON));
                     values.put(Tabs.EXTRAS, data.getStringExtra(EXTRA_EXTRAS));
-                    final String where = Where.equals(Tabs._ID, data.getLongExtra(EXTRA_ID, -1)).getSQL();
+                    final String where = Expression.equals(Tabs._ID, data.getLongExtra(EXTRA_ID, -1)).getSQL();
                     mResolver.update(Tabs.CONTENT_URI, values, where, null);
+                    SettingsActivity.setShouldNotifyChange(getActivity());
                 }
                 break;
             }
@@ -166,7 +206,7 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
 
     @Override
     public boolean onCreateActionMode(final ActionMode mode, final Menu menu) {
-        new TwidereMenuInflater(getActivity()).inflate(R.menu.action_multi_select_items, menu);
+        mode.getMenuInflater().inflate(R.menu.action_multi_select_items, menu);
         return true;
     }
 
@@ -176,18 +216,50 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
     }
 
     @Override
-    public void onCreateOptionsMenu(final Menu menu, final TwidereMenuInflater inflater) {
+    public void onCreateOptionsMenu(final Menu menu, final MenuInflater inflater) {
         inflater.inflate(R.menu.menu_custom_tabs, menu);
+        final Resources res = getResources();
+        final boolean hasOfficialKeyAccounts = Utils.hasAccountSignedWithOfficialKeys(getActivity());
+        final boolean forcePrivateAPI = mPreferences.getBoolean(KEY_FORCE_USING_PRIVATE_APIS, false);
+        final long[] accountIds = getAccountIds(getActivity());
+        final MenuItem itemAdd = menu.findItem(R.id.add_submenu);
+        if (itemAdd != null && itemAdd.hasSubMenu()) {
+            final SubMenu subMenu = itemAdd.getSubMenu();
+            subMenu.clear();
+            final HashMap<String, CustomTabConfiguration> map = getConfigurationMap();
+            final List<Entry<String, CustomTabConfiguration>> tabs = new ArrayList<>(
+                    map.entrySet());
+            Collections.sort(tabs, CustomTabConfigurationComparator.SINGLETON);
+            for (final Entry<String, CustomTabConfiguration> entry : tabs) {
+                final String type = entry.getKey();
+                final CustomTabConfiguration conf = entry.getValue();
+
+                final boolean isOfficialKeyAccountRequired = TAB_TYPE_ACTIVITIES_ABOUT_ME.equals(type)
+                        || TAB_TYPE_ACTIVITIES_BY_FRIENDS.equals(type);
+                final boolean accountIdRequired = conf.getAccountRequirement() == CustomTabConfiguration.ACCOUNT_REQUIRED;
+
+                final Intent intent = new Intent(INTENT_ACTION_ADD_TAB);
+                intent.setClass(getActivity(), CustomTabEditorActivity.class);
+                intent.putExtra(EXTRA_TYPE, type);
+                intent.putExtra(EXTRA_OFFICIAL_KEY_ONLY, isOfficialKeyAccountRequired);
+
+                final MenuItem subItem = subMenu.add(conf.getDefaultTitle());
+                final boolean disabledByNoAccount = accountIdRequired && accountIds.length == 0;
+                final boolean disabledByNoOfficialKey = !forcePrivateAPI && isOfficialKeyAccountRequired && !hasOfficialKeyAccounts;
+                final boolean disabledByDuplicateTab = conf.isSingleTab() && isTabAdded(getActivity(), type);
+                final boolean shouldDisable = disabledByDuplicateTab || disabledByNoOfficialKey || disabledByNoAccount;
+                subItem.setVisible(!shouldDisable);
+                subItem.setEnabled(!shouldDisable);
+                final Drawable icon = ResourcesCompat.getDrawable(res, conf.getDefaultIcon(), null);
+                subItem.setIcon(icon);
+                subItem.setIntent(intent);
+            }
+        }
     }
 
     @Override
     public View onCreateView(final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-        final View view = inflater.inflate(android.R.layout.list_content, null, false);
-        final ListView originalList = (ListView) view.findViewById(android.R.id.list);
-        final ViewGroup listContainer = (ViewGroup) originalList.getParent();
-        listContainer.removeView(originalList);
-        inflater.inflate(R.layout.fragment_custom_tabs, listContainer, true);
-        return view;
+        return inflater.inflate(R.layout.layout_draggable_list_with_empty_view, container, false);
     }
 
     @Override
@@ -201,19 +273,6 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
         updateTitle(mode);
     }
 
-    @Override
-    public void onListItemClick(final ListView l, final View v, final int position, final long id) {
-        final Cursor c = mAdapter.getCursor();
-        c.moveToPosition(mAdapter.getCursorPosition(position));
-        final Intent intent = new Intent(INTENT_ACTION_EDIT_TAB);
-        intent.setClass(getActivity(), CustomTabEditorActivity.class);
-        intent.putExtra(EXTRA_ID, c.getLong(c.getColumnIndex(Tabs._ID)));
-        intent.putExtra(EXTRA_TYPE, c.getString(c.getColumnIndex(Tabs.TYPE)));
-        intent.putExtra(EXTRA_NAME, c.getString(c.getColumnIndex(Tabs.NAME)));
-        intent.putExtra(EXTRA_ICON, c.getString(c.getColumnIndex(Tabs.ICON)));
-        intent.putExtra(EXTRA_EXTRAS, c.getString(c.getColumnIndex(Tabs.EXTRAS)));
-        startActivityForResult(intent, REQUEST_EDIT_TAB);
-    }
 
     @Override
     public void onLoaderReset(final Loader<Cursor> loader) {
@@ -245,49 +304,7 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
     }
 
     @Override
-    public void onPrepareOptionsMenu(final Menu menu) {
-        final Resources res = getResources();
-        final boolean hasOfficialKeyAccounts = Utils.hasAccountSignedWithOfficialKeys(getActivity());
-        final long[] account_ids = getAccountIds(getActivity());
-        final MenuItem itemAdd = menu.findItem(R.id.add_submenu);
-        if (itemAdd != null && itemAdd.hasSubMenu()) {
-            final SubMenu subMenu = itemAdd.getSubMenu();
-            subMenu.clear();
-            final HashMap<String, CustomTabConfiguration> map = getConfiguraionMap();
-            final List<Entry<String, CustomTabConfiguration>> tabs = new ArrayList<Entry<String, CustomTabConfiguration>>(
-                    map.entrySet());
-            Collections.sort(tabs, CustomTabConfigurationComparator.SINGLETON);
-            for (final Entry<String, CustomTabConfiguration> entry : tabs) {
-                final String type = entry.getKey();
-                final CustomTabConfiguration conf = entry.getValue();
-
-                final boolean isOfficiakKeyAccountRequired = TAB_TYPE_ACTIVITIES_ABOUT_ME.equals(type)
-                        || TAB_TYPE_ACTIVITIES_BY_FRIENDS.equals(type);
-                final boolean accountIdRequired = conf.getAccountRequirement() == CustomTabConfiguration.ACCOUNT_REQUIRED;
-
-                final Intent intent = new Intent(INTENT_ACTION_ADD_TAB);
-                intent.setClass(getActivity(), CustomTabEditorActivity.class);
-                intent.putExtra(EXTRA_TYPE, type);
-                intent.putExtra(EXTRA_OFFICIAL_KEY_ONLY, isOfficiakKeyAccountRequired);
-
-                final MenuItem subItem = subMenu.add(conf.getDefaultTitle());
-                final boolean shouldDisable = conf.isSingleTab() && isTabAdded(getActivity(), type)
-                        || isOfficiakKeyAccountRequired && !hasOfficialKeyAccounts || accountIdRequired
-                        && account_ids.length == 0;
-                subItem.setVisible(!shouldDisable);
-                subItem.setEnabled(!shouldDisable);
-                final Drawable icon = res.getDrawable(conf.getDefaultIcon());
-                subItem.setIcon(icon);
-                subItem.setIntent(intent);
-            }
-        }
-    }
-
-    @Override
     public void onStop() {
-        if (mPopupMenu != null) {
-            mPopupMenu.dismiss();
-        }
         super.onStop();
     }
 
@@ -301,10 +318,11 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
                 final long id = c.getLong(idIdx);
                 final ContentValues values = new ContentValues();
                 values.put(Tabs.POSITION, i);
-                final String where = Tabs._ID + " = " + id;
+                final String where = Expression.equals(Tabs._ID, id).getSQL();
                 mResolver.update(Tabs.CONTENT_URI, values, where, null);
             }
         }
+        SettingsActivity.setShouldNotifyChange(getActivity());
     }
 
     private void updateTitle(final ActionMode mode) {
@@ -313,12 +331,14 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
         mode.setTitle(getResources().getQuantityString(R.plurals.Nitems_selected, count, count));
     }
 
-    public static class CustomTabsAdapter extends SimpleDragSortCursorAdapter implements OnClickListener {
+    public static class CustomTabsAdapter extends SimpleDragSortCursorAdapter {
 
+        private final int mIconColor;
         private CursorIndices mIndices;
 
         public CustomTabsAdapter(final Context context) {
             super(context, R.layout.list_item_custom_tab, null, new String[0], new int[0], 0);
+            mIconColor = ThemeUtils.getThemeForegroundColor(context);
         }
 
         @Override
@@ -342,10 +362,11 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
             final Drawable icon = getTabIconDrawable(context, getTabIconObject(iconKey));
             holder.icon.setVisibility(View.VISIBLE);
             if (icon != null) {
-                ViewAccessor.setBackground(holder.icon, icon);
+                holder.icon.setImageDrawable(icon);
             } else {
-                holder.icon.setBackgroundResource(R.drawable.ic_iconic_action_list);
+                holder.icon.setImageResource(R.drawable.ic_action_list);
             }
+            holder.icon.setColorFilter(mIconColor, Mode.SRC_ATOP);
         }
 
         @Override
@@ -365,11 +386,6 @@ public class CustomTabsFragment extends BaseListFragment implements LoaderCallba
                 view.setTag(holder);
             }
             return view;
-        }
-
-        @Override
-        public void onClick(final View view) {
-
         }
 
         static class CursorIndices {

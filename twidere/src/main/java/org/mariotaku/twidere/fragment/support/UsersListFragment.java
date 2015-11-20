@@ -28,12 +28,12 @@ import org.mariotaku.twidere.model.ParcelableUser;
 
 import java.util.List;
 
-public class UsersListFragment extends BaseUsersListFragment {
+public class UsersListFragment extends ParcelableUsersFragment {
 
 	@Override
-	public Loader<List<ParcelableUser>> newLoaderInstance(final Context context, final Bundle args) {
+	public Loader<List<ParcelableUser>> onCreateUsersLoader(final Context context, final Bundle args, boolean fromUser) {
 		if (args == null) return null;
-		if (args.containsKey(EXTRA_USERS)) return new IntentExtrasUsersLoader(context, args, getData());
+		if (args.containsKey(EXTRA_USERS)) return new IntentExtrasUsersLoader(context, args, getData(), fromUser);
 		return null;
 	}
 

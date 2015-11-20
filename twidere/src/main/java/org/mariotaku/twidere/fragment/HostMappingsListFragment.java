@@ -19,37 +19,42 @@
 
 package org.mariotaku.twidere.fragment;
 
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
-import android.app.Fragment;
-import android.app.FragmentManager;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.DialogInterface.OnClickListener;
 import android.content.DialogInterface.OnShowListener;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.SparseBooleanArray;
 import android.view.ActionMode;
 import android.view.LayoutInflater;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView.MultiChoiceModeListener;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import org.apache.commons.lang3.StringUtils;
 import org.mariotaku.twidere.R;
 import org.mariotaku.twidere.adapter.ArrayAdapter;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
-import org.mariotaku.twidere.task.AsyncTask;
-import org.mariotaku.twidere.util.HostsFileParser;
 import org.mariotaku.twidere.util.ParseUtils;
+import org.mariotaku.twidere.util.SharedPreferencesWrapper;
 import org.mariotaku.twidere.util.ThemeUtils;
 
 import java.util.Map;
@@ -59,15 +64,47 @@ import static android.text.TextUtils.isEmpty;
 public class HostMappingsListFragment extends BaseListFragment implements MultiChoiceModeListener,
         OnSharedPreferenceChangeListener {
 
+    private static final String EXTRA_EDIT_MODE = "edit_mode";
+    private static final String EXTRA_HOST = "host";
+    private static final String EXTRA_ADDRESS = "address";
+    private static final String EXTRA_EXCLUDED = "excluded";
+
     private ListView mListView;
     private HostMappingAdapter mAdapter;
-    private SharedPreferences mPreferences;
+    private SharedPreferencesWrapper mHostMapping;
+
+    @Override
+    public void onActivityCreated(final Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+        setHasOptionsMenu(true);
+        mHostMapping = SharedPreferencesWrapper.getInstance(getActivity(),
+                HOST_MAPPING_PREFERENCES_NAME, Context.MODE_PRIVATE);
+        mHostMapping.registerOnSharedPreferenceChangeListener(this);
+        mAdapter = new HostMappingAdapter(getActivity());
+        setListAdapter(mAdapter);
+        mListView = getListView();
+        mListView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE_MODAL);
+        mListView.setMultiChoiceModeListener(this);
+        reloadHostMappings();
+    }
+
+    @Override
+    public boolean onCreateActionMode(final ActionMode mode, final Menu menu) {
+        mode.getMenuInflater().inflate(R.menu.action_multi_select_items, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onPrepareActionMode(final ActionMode mode, final Menu menu) {
+        updateTitle(mode);
+        return true;
+    }
 
     @Override
     public boolean onActionItemClicked(final ActionMode mode, final MenuItem item) {
         switch (item.getItemId()) {
-            case MENU_DELETE: {
-                final SharedPreferences.Editor editor = mPreferences.edit();
+            case R.id.delete: {
+                final SharedPreferences.Editor editor = mHostMapping.edit();
                 final SparseBooleanArray array = mListView.getCheckedItemPositions();
                 if (array == null) return false;
                 for (int i = 0, size = array.size(); i < size; i++) {
@@ -88,56 +125,45 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
     }
 
     @Override
-    public void onActivityCreated(final Bundle savedInstanceState) {
-        super.onActivityCreated(savedInstanceState);
-        setHasOptionsMenu(true);
-        mPreferences = getSharedPreferences(HOST_MAPPING_PREFERENCES_NAME, Context.MODE_PRIVATE);
-        mPreferences.registerOnSharedPreferenceChangeListener(this);
-        mAdapter = new HostMappingAdapter(getActivity());
-        setListAdapter(mAdapter);
-        mListView = getListView();
-        mListView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE_MODAL);
-        mListView.setMultiChoiceModeListener(this);
-        reloadHostMappings();
+    public void onDestroyActionMode(final ActionMode mode) {
+
     }
 
     @Override
-    public boolean onCreateActionMode(final ActionMode mode, final Menu menu) {
-        new TwidereMenuInflater(getActivity()).inflate(R.menu.action_multi_select_items, menu);
-        return true;
-    }
-
-    @Override
-    public void onCreateOptionsMenu(final Menu menu, final TwidereMenuInflater inflater) {
+    public void onCreateOptionsMenu(final Menu menu, final MenuInflater inflater) {
         inflater.inflate(R.menu.menu_host_mapping, menu);
     }
 
     @Override
-    public void onDestroyActionMode(final ActionMode mode) {
+    public void onListItemClick(ListView l, View v, int position, long id) {
+        final String host = mAdapter.getItem(position);
+        final String address = mAdapter.getAddress(host);
+        final Bundle args = new Bundle();
+        args.putString(EXTRA_HOST, host);
+        args.putString(EXTRA_ADDRESS, address);
+        args.putBoolean(EXTRA_EXCLUDED, StringUtils.equals(host, address));
+        args.putBoolean(EXTRA_EDIT_MODE, true);
+        final DialogFragment df = new AddMappingDialogFragment();
+        df.setArguments(args);
+        df.show(getFragmentManager(), "add_mapping");
+    }
 
+    @Override
+    public boolean onOptionsItemSelected(final MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.add: {
+                final DialogFragment df = new AddMappingDialogFragment();
+                df.show(getFragmentManager(), "add_mapping");
+                break;
+            }
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
     public void onItemCheckedStateChanged(final ActionMode mode, final int position, final long id,
                                           final boolean checked) {
         updateTitle(mode);
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(final MenuItem item) {
-        switch (item.getItemId()) {
-            case MENU_ADD:
-                final DialogFragment df = new AddMappingDialogFragment();
-                df.show(getFragmentManager(), "add_mapping");
-                break;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
-    public boolean onPrepareActionMode(final ActionMode mode, final Menu menu) {
-        updateTitle(mode);
-        return true;
     }
 
     @Override
@@ -156,15 +182,12 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
         mode.setTitle(getResources().getQuantityString(R.plurals.Nitems_selected, count, count));
     }
 
-    public static class AddMappingDialogFragment extends BaseDialogFragment implements DialogInterface.OnClickListener,
-            OnShowListener, TextWatcher {
+    public static class AddMappingDialogFragment extends BaseDialogFragment implements OnClickListener,
+            OnShowListener, TextWatcher, OnCheckedChangeListener {
+
 
         private EditText mEditHost, mEditAddress;
-
-        @Override
-        public void afterTextChanged(final Editable s) {
-
-        }
+        private CheckBox mCheckExclude;
 
         @Override
         public void beforeTextChanged(final CharSequence s, final int start, final int count, final int after) {
@@ -172,16 +195,32 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
         }
 
         @Override
+        public void onTextChanged(final CharSequence s, final int start, final int before, final int count) {
+            updateButton();
+        }
+
+        @Override
+        public void afterTextChanged(final Editable s) {
+
+        }
+
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            updateAddressField();
+            updateButton();
+        }
+
+        @Override
         public void onClick(final DialogInterface dialog, final int which) {
             switch (which) {
                 case DialogInterface.BUTTON_POSITIVE: {
-                    final String mHost = ParseUtils.parseString(mEditHost.getText());
-                    final String mAddress = ParseUtils.parseString(mEditAddress.getText());
-                    if (isEmpty(mHost) || isEmpty(mAddress)) return;
+                    final String host = ParseUtils.parseString(mEditHost.getText());
+                    final String address = mCheckExclude.isChecked() ? host : ParseUtils.parseString(mEditAddress.getText());
+                    if (isEmpty(host) || isEmpty(address)) return;
                     final SharedPreferences prefs = getSharedPreferences(HOST_MAPPING_PREFERENCES_NAME,
                             Context.MODE_PRIVATE);
                     final SharedPreferences.Editor editor = prefs.edit();
-                    editor.putString(mHost, mAddress);
+                    editor.putString(host, address);
                     editor.apply();
                     break;
                 }
@@ -193,16 +232,23 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
         public Dialog onCreateDialog(final Bundle savedInstanceState) {
             final Context wrapped = ThemeUtils.getDialogThemedContext(getActivity());
             final AlertDialog.Builder builder = new AlertDialog.Builder(wrapped);
+            @SuppressLint("InflateParams")
             final View view = LayoutInflater.from(getActivity()).inflate(R.layout.dialog_host_mapping, null);
             builder.setView(view);
             mEditHost = (EditText) view.findViewById(R.id.host);
             mEditAddress = (EditText) view.findViewById(R.id.address);
+            mCheckExclude = (CheckBox) view.findViewById(R.id.exclude);
             mEditHost.addTextChangedListener(this);
             mEditAddress.addTextChangedListener(this);
+            mCheckExclude.setOnCheckedChangeListener(this);
             final Bundle args = getArguments();
-            if (savedInstanceState == null && args != null) {
-                mEditHost.setText(args.getCharSequence(EXTRA_TEXT1));
-                mEditAddress.setText(args.getCharSequence(EXTRA_TEXT2));
+            if (args != null) {
+                mEditHost.setEnabled(!args.getBoolean(EXTRA_EDIT_MODE, false));
+                if (savedInstanceState == null) {
+                    mEditHost.setText(args.getCharSequence(EXTRA_HOST));
+                    mEditAddress.setText(args.getCharSequence(EXTRA_ADDRESS));
+                    mCheckExclude.setChecked(args.getBoolean(EXTRA_EXCLUDED));
+                }
             }
             builder.setTitle(R.string.add_host_mapping);
             builder.setPositiveButton(android.R.string.ok, this);
@@ -213,35 +259,39 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
         }
 
         @Override
-        public void onSaveInstanceState(final Bundle outState) {
-            outState.putCharSequence(EXTRA_TEXT1, mEditHost.getText());
-            outState.putCharSequence(EXTRA_TEXT2, mEditAddress.getText());
+        public void onSaveInstanceState(@NonNull final Bundle outState) {
+            outState.putCharSequence(EXTRA_HOST, mEditHost.getText());
+            outState.putCharSequence(EXTRA_ADDRESS, mEditAddress.getText());
+            outState.putCharSequence(EXTRA_EXCLUDED, mEditAddress.getText());
             super.onSaveInstanceState(outState);
         }
 
         @Override
         public void onShow(final DialogInterface dialog) {
-            final boolean text_valid = !isEmpty(mEditHost.getText()) && !isEmpty(mEditAddress.getText());
-            ((AlertDialog) dialog).getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(text_valid);
+            updateButton();
         }
 
-        @Override
-        public void onTextChanged(final CharSequence s, final int start, final int before, final int count) {
+        private void updateAddressField() {
+            mEditAddress.setVisibility(mCheckExclude.isChecked() ? View.GONE : View.VISIBLE);
+        }
+
+        private void updateButton() {
             final AlertDialog dialog = (AlertDialog) getDialog();
             if (dialog == null) return;
-            final boolean text_valid = !isEmpty(mEditHost.getText()) && !isEmpty(mEditAddress.getText());
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(text_valid);
+            final boolean hostValid = !isEmpty(mEditHost.getText());
+            final boolean addressValid = !isEmpty(mEditAddress.getText()) || mCheckExclude.isChecked();
+            final Button positiveButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+            positiveButton.setEnabled(hostValid && addressValid);
         }
-
     }
 
     static class HostMappingAdapter extends ArrayAdapter<String> {
 
-        private final SharedPreferences mPreferences;
+        private final SharedPreferences mHostMapping;
 
         public HostMappingAdapter(final Context context) {
             super(context, android.R.layout.simple_list_item_activated_2);
-            mPreferences = context.getSharedPreferences(HOST_MAPPING_PREFERENCES_NAME, Context.MODE_PRIVATE);
+            mHostMapping = context.getSharedPreferences(HOST_MAPPING_PREFERENCES_NAME, Context.MODE_PRIVATE);
         }
 
         @Override
@@ -251,57 +301,24 @@ public class HostMappingsListFragment extends BaseListFragment implements MultiC
             final TextView text2 = (TextView) view.findViewById(android.R.id.text2);
             final String key = getItem(position);
             text1.setText(key);
-            text2.setText(mPreferences.getString(key, null));
+            final String value = getAddress(key);
+            if (StringUtils.equals(key, value)) {
+                text2.setText(R.string.excluded);
+            } else {
+                text2.setText(value);
+            }
             return view;
         }
 
         public void reload() {
             clear();
-            final Map<String, ?> all = mPreferences.getAll();
+            final Map<String, ?> all = mHostMapping.getAll();
             addAll(all.keySet());
         }
 
-    }
-
-    static class ImportHostsTask extends AsyncTask<Void, Void, Boolean> {
-
-        private final SharedPreferences mPreferences;
-        private final HostMappingsListFragment mActivity;
-        private final String mPath;
-
-        ImportHostsTask(final HostMappingsListFragment activity, final String path) {
-            mActivity = activity;
-            mPath = path;
-            mPreferences = activity.getSharedPreferences(HOST_MAPPING_PREFERENCES_NAME, Context.MODE_PRIVATE);
-        }
-
-        @Override
-        protected Boolean doInBackground(final Void... params) {
-            final HostsFileParser hosts = new HostsFileParser(mPath);
-            final boolean result = hosts.reload();
-            final SharedPreferences.Editor editor = mPreferences.edit();
-            for (final Map.Entry<String, String> entry : hosts.getAll().entrySet()) {
-                editor.putString(entry.getKey(), entry.getValue());
-            }
-            return result && editor.commit();
-        }
-
-        @Override
-        protected void onPostExecute(final Boolean result) {
-            final FragmentManager fm = mActivity.getFragmentManager();
-            final Fragment f = fm.findFragmentByTag("import_hosts_progress");
-            if (f instanceof DialogFragment) {
-                ((DialogFragment) f).dismiss();
-            }
-            mActivity.reloadHostMappings();
-        }
-
-        @Override
-        protected void onPreExecute() {
-            final FragmentManager fm = mActivity.getFragmentManager();
-            final DialogFragment f = new ProgressDialogFragment();
-            f.setCancelable(false);
-            f.show(fm, "import_hosts_progress");
+        public String getAddress(String key) {
+            return mHostMapping.getString(key, null);
         }
     }
+
 }

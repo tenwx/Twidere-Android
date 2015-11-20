@@ -19,26 +19,33 @@
 
 package org.mariotaku.twidere.view.iface;
 
+import android.graphics.Rect;
 import android.view.MotionEvent;
 import android.view.View;
 
 public interface IExtendedView {
 
-	public void setOnSizeChangedListener(final OnSizeChangedListener listener);
+    void setOnFitSystemWindowsListener(final OnFitSystemWindowsListener listener);
 
-	public void setTouchInterceptor(final TouchInterceptor listener);
+    void setOnSizeChangedListener(final OnSizeChangedListener listener);
 
-	public static interface OnSizeChangedListener {
-		void onSizeChanged(View view, int w, int h, int oldw, int oldh);
-	}
+    void setTouchInterceptor(final TouchInterceptor listener);
 
-	public static interface TouchInterceptor {
+    interface OnFitSystemWindowsListener {
+        void onFitSystemWindows(Rect insets);
+    }
 
-		boolean dispatchTouchEvent(View view, MotionEvent event);
+    interface OnSizeChangedListener {
+        void onSizeChanged(View view, int w, int h, int oldw, int oldh);
+    }
 
-		boolean onInterceptTouchEvent(View view, MotionEvent event);
+    interface TouchInterceptor {
 
-		boolean onTouchEvent(View view, MotionEvent event);
+        boolean dispatchTouchEvent(View view, MotionEvent event);
 
-	}
+        boolean onInterceptTouchEvent(View view, MotionEvent event);
+
+        boolean onTouchEvent(View view, MotionEvent event);
+
+    }
 }

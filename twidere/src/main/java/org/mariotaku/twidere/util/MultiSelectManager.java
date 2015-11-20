@@ -29,9 +29,9 @@ import java.util.List;
 
 public class MultiSelectManager implements Constants {
 
-	private final NoDuplicatesArrayList<Long> mSelectedStatusIds = new NoDuplicatesArrayList<Long>();
-	private final NoDuplicatesArrayList<Long> mSelectedUserIds = new NoDuplicatesArrayList<Long>();
-	private final NoDuplicatesArrayList<Callback> mCallbacks = new NoDuplicatesArrayList<Callback>();
+	private final NoDuplicatesArrayList<Long> mSelectedStatusIds = new NoDuplicatesArrayList<>();
+	private final NoDuplicatesArrayList<Long> mSelectedUserIds = new NoDuplicatesArrayList<>();
+	private final NoDuplicatesArrayList<Callback> mCallbacks = new NoDuplicatesArrayList<>();
 	private final ItemsList mSelectedItems = new ItemsList(this);
 	private long mAccountId;
 
@@ -89,7 +89,7 @@ public class MultiSelectManager implements Constants {
 		mCallbacks.remove(callback);
 	}
 
-	public boolean unselectItem(final Object item) {
+	public boolean deselectItem(final Object item) {
 		return mSelectedItems.remove(item);
 	}
 
@@ -121,7 +121,7 @@ public class MultiSelectManager implements Constants {
 	}
 
 	public static long[] getSelectedUserIds(final List<Object> selected_items) {
-		final ArrayList<Long> ids_list = new ArrayList<Long>();
+		final ArrayList<Long> ids_list = new ArrayList<>();
 		for (final Object item : selected_items) {
 			if (item instanceof ParcelableUser) {
 				ids_list.add(((ParcelableUser) item).id);
@@ -129,16 +129,16 @@ public class MultiSelectManager implements Constants {
 				ids_list.add(((ParcelableStatus) item).user_id);
 			}
 		}
-		return ArrayUtils.fromList(ids_list);
+		return TwidereArrayUtils.fromList(ids_list);
 	}
 
-	public static interface Callback {
+	public interface Callback {
 
-		public void onItemsCleared();
+		void onItemsCleared();
 
-		public void onItemSelected(Object item);
+		void onItemSelected(Object item);
 
-		public void onItemUnselected(Object item);
+		void onItemUnselected(Object item);
 
 	}
 

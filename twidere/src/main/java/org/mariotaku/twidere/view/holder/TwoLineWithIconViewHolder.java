@@ -23,15 +23,15 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-public class TwoLineWithIconViewHolder extends ViewHolder {
+public class TwoLineWithIconViewHolder extends ViewListHolder {
 
-	public final ImageView icon;
-	public final TextView text1, text2;
+    public final ImageView icon;
+    public final TextView text1, text2;
 
-	public TwoLineWithIconViewHolder(final View view) {
-		super(view);
-		icon = (ImageView) findViewById(android.R.id.icon);
-		text1 = (TextView) findViewById(android.R.id.text1);
-		text2 = (TextView) findViewById(android.R.id.text2);
-	}
+    public TwoLineWithIconViewHolder(final View view) {
+        super(view);
+        icon = (ImageView) findViewById(android.R.id.icon);
+        text1 = (TextView) findViewById(android.R.id.text1);
+        text2 = (TextView) findViewById(android.R.id.text2);
+    }
 }

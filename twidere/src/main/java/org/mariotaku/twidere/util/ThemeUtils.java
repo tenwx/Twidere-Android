@@ -19,282 +19,309 @@
 
 package org.mariotaku.twidere.util;
 
-import android.app.ActionBar;
 import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Color;
-import android.graphics.PorterDuff;
+import android.graphics.PorterDuff.Mode;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.graphics.ColorUtils;
+import android.support.v4.view.ViewCompat;
+import android.support.v7.app.ActionBar;
+import android.support.v7.internal.app.WindowDecorActionBar;
+import android.support.v7.internal.app.WindowDecorActionBar.ActionModeImpl;
+import android.support.v7.internal.view.StandaloneActionMode;
+import android.support.v7.internal.view.menu.ActionMenuItemView;
+import android.support.v7.internal.widget.ActionBarContainer;
+import android.support.v7.internal.widget.ActionBarContextView;
+import android.support.v7.internal.widget.ActionBarOverlayLayout;
+import android.support.v7.internal.widget.ContentFrameLayout;
+import android.support.v7.widget.ActionMenuPresenter;
+import android.support.v7.widget.ActionMenuView;
+import android.support.v7.widget.Toolbar;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.AttributeSet;
+import android.util.TypedValue;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.view.ContextThemeWrapper;
-import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.View.OnLongClickListener;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
 
-import com.negusoft.holoaccent.AccentResources;
-
-import org.mariotaku.refreshnow.widget.RefreshNowConfig;
-import org.mariotaku.refreshnow.widget.RefreshNowProgressIndicator.IndicatorConfig;
+import org.apache.commons.lang3.ArrayUtils;
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.R;
 import org.mariotaku.twidere.activity.iface.IThemedActivity;
-import org.mariotaku.twidere.content.TwidereContextThemeWrapper;
-import org.mariotaku.twidere.content.TwidereContextWrapper;
-import org.mariotaku.twidere.content.iface.ITwidereContextWrapper;
-import org.mariotaku.twidere.content.res.NoAccentResources;
-import org.mariotaku.twidere.util.theme.ActionIconsInterceptor;
-import org.mariotaku.twidere.util.theme.ActivityIconsInterceptor;
-import org.mariotaku.twidere.util.theme.WhiteDrawableInterceptor;
+import org.mariotaku.twidere.graphic.ActionBarColorDrawable;
+import org.mariotaku.twidere.graphic.ActionIconDrawable;
+import org.mariotaku.twidere.preference.ThemeBackgroundPreference;
+import org.mariotaku.twidere.text.ParagraphSpacingSpan;
+import org.mariotaku.twidere.util.menu.TwidereMenuInfo;
+import org.mariotaku.twidere.util.support.ViewSupport;
+import org.mariotaku.twidere.view.TabPagerIndicator;
+import org.mariotaku.twidere.view.TwidereToolbar;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Field;
 
 public class ThemeUtils implements Constants {
 
+    public static final int ACCENT_COLOR_THRESHOLD = 192;
+    public static final int[] ATTRS_TEXT_COLOR_PRIMARY = {android.R.attr.textColorPrimary};
+    public static final int[] ATTRS_TEXT_COLOR_PRIMARY_AND_INVERSE = {android.R.attr.textColorPrimary,
+            android.R.attr.textColorPrimaryInverse};
+    public static final int[] ATTRS_COLOR_FOREGROUND_AND_INVERSE = {android.R.attr.colorForeground,
+            android.R.attr.colorForegroundInverse};
     private static final int[] ANIM_OPEN_STYLE_ATTRS = {android.R.attr.activityOpenEnterAnimation,
             android.R.attr.activityOpenExitAnimation};
     private static final int[] ANIM_CLOSE_STYLE_ATTRS = {android.R.attr.activityCloseEnterAnimation,
             android.R.attr.activityCloseExitAnimation};
 
-    private static final String[] sClassPrefixList = {"android.widget.", "android.webkit."};
-
     private ThemeUtils() {
         throw new AssertionError();
     }
 
-    @Deprecated
-    public static void applyActionBarBackground(final ActionBar actionBar, final Context context) {
-        applyActionBarBackground(actionBar, context, true);
-    }
 
-    @Deprecated
     public static void applyActionBarBackground(final ActionBar actionBar, final Context context,
-                                                final boolean applyAlpha) {
+                                                final int themeRes, final int accentColor, String backgroundOption, boolean outlineEnabled) {
         if (actionBar == null || context == null) return;
-        actionBar.setBackgroundDrawable(getActionBarBackground(context, applyAlpha));
-        actionBar.setSplitBackgroundDrawable(getActionBarSplitBackground(context, applyAlpha));
-        actionBar.setStackedBackgroundDrawable(getActionBarStackedBackground(context, applyAlpha));
-    }
-
-    public static void applyActionBarBackground(final ActionBar actionBar, final Context context, final int themeRes) {
-        if (actionBar == null || context == null) return;
-        actionBar.setBackgroundDrawable(getActionBarBackground(context, themeRes));
+        actionBar.setBackgroundDrawable(getActionBarBackground(context, themeRes, accentColor, backgroundOption, outlineEnabled));
         actionBar.setSplitBackgroundDrawable(getActionBarSplitBackground(context, themeRes));
-        actionBar.setStackedBackgroundDrawable(getActionBarStackedBackground(context, themeRes));
+        actionBar.setStackedBackgroundDrawable(getActionBarStackedBackground(context, themeRes, accentColor, backgroundOption, outlineEnabled));
     }
 
-    public static void applyBackground(final View view) {
-        if (view == null) return;
-        applyBackground(view, getUserThemeColor(view.getContext()));
+
+    public static void applyActionBarBackground(final ActionBarContainer actionBar, final Context context,
+                                                final int themeRes, final int accentColor, String backgroundOption, boolean outlineEnabled) {
+        if (actionBar == null || context == null) return;
+        actionBar.setPrimaryBackground(getActionBarBackground(context, themeRes, accentColor, backgroundOption, outlineEnabled));
+        actionBar.setSplitBackground(getActionBarSplitBackground(context, themeRes));
+        actionBar.setStackedBackground(getActionBarStackedBackground(context, themeRes, accentColor, backgroundOption, outlineEnabled));
     }
 
-    public static void applyBackground(final View view, final int color) {
-        if (view == null) return;
-        try {
-            final Drawable bg = view.getBackground();
-            if (bg == null) return;
-            final Drawable mutated = bg.mutate();
-            if (mutated == null) return;
-            mutated.setColorFilter(color, PorterDuff.Mode.MULTIPLY);
-            view.invalidate();
-        } catch (final Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void applyThemeAlphaToDrawable(final Context context, final Drawable d) {
-        if (context == null || d == null) return;
-        d.setAlpha(getThemeAlpha(getThemeResource(context)));
-    }
-
-    public static void applyThemeBackgroundAlphaToDrawable(final Context context, final Drawable d) {
-        if (context == null || d == null) return;
-        d.setAlpha(getUserThemeBackgroundAlpha(context));
-    }
-
-    public static IndicatorConfig buildRefreshIndicatorConfig(final Context context) {
-        final IndicatorConfig.Builder builder = new IndicatorConfig.Builder(context);
-        final Resources res = context.getResources();
-        final float width = 3 * res.getDisplayMetrics().density;
-        final int themeColor = getUserThemeColor(context);
-        builder.progressColor(themeColor);
-        builder.indeterminateColor(themeColor);
-        builder.progressStrokeWidth(width);
-        builder.indeterminateStrokeWidth(width);
-        return builder.build();
-    }
-
-    public static RefreshNowConfig buildRefreshNowConfig(final Context context) {
-        final RefreshNowConfig.Builder builder = new RefreshNowConfig.Builder(context);
-        return builder.build();
-    }
-
-    public static View createView(final String name, final Context context, final AttributeSet attrs) {
-        try {
-            return newViewInstance(name, context, attrs);
-        } catch (final Exception e) {
-            // In this case we want to let the base class take a crack
-            // at it.
-        }
-        for (final String prefix : sClassPrefixList) {
-            try {
-                return newViewInstance(prefix + name, context, attrs);
-            } catch (final Exception e) {
-                // In this case we want to let the base class take a crack
-                // at it.
+    public static void applyColorFilterToMenuIcon(final Menu menu, final int color, final int popupColor,
+                                                  final int highlightColor, final Mode mode,
+                                                  final int... excludedGroups) {
+        for (int i = 0, j = menu.size(); i < j; i++) {
+            final MenuItem item = menu.getItem(i);
+            final Drawable icon = item.getIcon();
+            final ContextMenuInfo info = item.getMenuInfo();
+            if (icon != null && !ArrayUtils.contains(excludedGroups, item.getGroupId())) {
+                icon.mutate();
+                if (info instanceof TwidereMenuInfo) {
+                    final TwidereMenuInfo sInfo = (TwidereMenuInfo) info;
+                    final int stateColor = sInfo.isHighlight() ? sInfo.getHighlightColor(highlightColor) : color;
+                    if (stateColor != 0) {
+                        icon.setColorFilter(stateColor, mode);
+                    }
+                } else if (color != 0) {
+                    icon.setColorFilter(color, mode);
+                }
             }
+            if (item.hasSubMenu()) {
+                // SubMenu item is always in popup
+                applyColorFilterToMenuIcon(item.getSubMenu(), popupColor, popupColor, highlightColor, mode, excludedGroups);
+            }
+        }
+    }
+
+    public static void applyParagraphSpacing(TextView textView, float multiplier) {
+        final SpannableStringBuilder builder = SpannableStringBuilder.valueOf(textView.getText());
+        int prevLineBreak, currLineBreak = 0;
+        for (int i = 0, j = builder.length(); i < j; i++) {
+            if (builder.charAt(i) == '\n') {
+                prevLineBreak = currLineBreak;
+                currLineBreak = i;
+                if (currLineBreak > 0) {
+                    builder.setSpan(new ParagraphSpacingSpan(multiplier), prevLineBreak, currLineBreak,
+                            Spanned.SPAN_INCLUSIVE_INCLUSIVE);
+                }
+            }
+        }
+        textView.setText(builder);
+    }
+
+    public static void applySupportActionModeColor(final android.support.v7.view.ActionMode modeCompat,
+                                                   Activity activity, int themeRes,
+                                                   int accentColor, String backgroundOption,
+                                                   boolean outlineEnabled) {
+        // Very dirty implementation
+        // This call ensures TitleView created
+        modeCompat.setTitle(modeCompat.getTitle());
+        View contextView = null;
+        if (modeCompat instanceof ActionModeImpl) {
+            WindowDecorActionBar actionBar = (WindowDecorActionBar) Utils.findFieldOfTypes(modeCompat,
+                    ActionModeImpl.class, WindowDecorActionBar.class);
+            if (actionBar == null) return;
+            contextView = (View) Utils.findFieldOfTypes(actionBar, WindowDecorActionBar.class,
+                    ActionBarContextView.class);
+        } else if (modeCompat instanceof StandaloneActionMode) {
+            contextView = (View) Utils.findFieldOfTypes(modeCompat, StandaloneActionMode.class,
+                    ActionBarContextView.class);
+        }
+        if (!(contextView instanceof ActionBarContextView)) return;
+        setActionBarContextViewBackground((ActionBarContextView) contextView, themeRes,
+                accentColor, backgroundOption, outlineEnabled);
+    }
+
+    public static void setActionBarContextViewBackground(@NonNull ActionBarContextView contextView,
+                                                         int themeRes, int accentColor,
+                                                         String backgroundOption, boolean outlineEnabled) {
+        ViewSupport.setBackground(contextView, getActionBarBackground(contextView.getContext(),
+                themeRes, accentColor, backgroundOption, outlineEnabled));
+    }
+
+    public static void setActionBarContextViewColor(@NonNull ActionBarContextView contextView,
+                                                    int itemColor) {
+        contextView.setTitle(contextView.getTitle());
+        contextView.setSubtitle(contextView.getSubtitle());
+        final ImageView actionModeCloseButton = (ImageView) contextView.findViewById(android.support.v7.appcompat.R.id.action_mode_close_button);
+        final ActionMenuView menuView = ViewSupport.findViewByType(contextView, ActionMenuView.class);
+        if (actionModeCloseButton != null) {
+            actionModeCloseButton.setColorFilter(itemColor, Mode.SRC_ATOP);
+        }
+        if (menuView != null) {
+            setActionBarOverflowColor(menuView, itemColor);
+            ThemeUtils.wrapToolbarMenuIcon(menuView, itemColor, itemColor);
+        }
+    }
+
+    public static void applyWindowBackground(@NonNull Context context, @NonNull Window window, int theme, String option, int alpha) {
+        if (isWindowFloating(context, theme)) return;
+        final int normalTheme = getThemeResource(theme);
+        if (VALUE_THEME_BACKGROUND_TRANSPARENT.equals(option)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
+            window.setBackgroundDrawable(getWindowBackgroundFromThemeApplyAlpha(context, normalTheme, alpha));
+        } else if (VALUE_THEME_BACKGROUND_SOLID.equals(option)) {
+            window.setBackgroundDrawable(new ColorDrawable(isDarkTheme(normalTheme) ? Color.BLACK : Color.WHITE));
+        } else {
+            window.setBackgroundDrawable(getWindowBackgroundFromTheme(context, normalTheme));
+        }
+    }
+
+    public static void applyWindowBackground(Context context, View window, int theme, String option, int alpha) {
+        if (isWindowFloating(context, theme)) return;
+        final int normalTheme = getThemeResource(theme);
+        if (VALUE_THEME_BACKGROUND_TRANSPARENT.equals(option)) {
+            ViewSupport.setBackground(window, getWindowBackgroundFromThemeApplyAlpha(context, normalTheme, alpha));
+        } else if (VALUE_THEME_BACKGROUND_SOLID.equals(option)) {
+            ViewSupport.setBackground(window, new ColorDrawable(isDarkTheme(normalTheme) ? Color.BLACK : Color.WHITE));
+        } else {
+            ViewSupport.setBackground(window, getWindowBackgroundFromTheme(context, normalTheme));
+        }
+    }
+
+
+    @NonNull
+    public static Drawable getActionBarBackground(final Context context, final int themeRes,
+                                                  final int accentColor, final String backgroundOption,
+                                                  final boolean outlineEnabled) {
+        final int actionBarColor;
+        if (!isDarkTheme(themeRes)) {
+            actionBarColor = accentColor;
+        } else if (isSolidBackground(backgroundOption)) {
+            actionBarColor = Color.BLACK;
+        } else {
+            actionBarColor = context.getResources().getColor(R.color.background_color_action_bar_dark);
+        }
+        return ActionBarColorDrawable.create(actionBarColor, outlineEnabled);
+    }
+
+    public static int getActionBarPopupThemeRes(final Context context, int def) {
+        final TypedValue outValue = new TypedValue();
+        if (context.getTheme().resolveAttribute(R.attr.actionBarPopupTheme, outValue, true)) {
+            return outValue.resourceId;
+        }
+        return def;
+    }
+
+    public static Drawable getActionBarSplitBackground(final Context context, final int themeRes) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.backgroundSplit},
+                android.R.attr.actionBarStyle, themeRes);
+        try {
+            return a.getDrawable(0);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    @NonNull
+    public static Drawable getActionBarStackedBackground(final Context context, final int themeRes,
+                                                         final int accentColor, String backgroundOption,
+                                                         boolean outlineEnabled) {
+        return getActionBarBackground(context, themeRes, accentColor, backgroundOption, outlineEnabled);
+    }
+
+    public static int getCardBackgroundColor(final Context context, String backgroundOption, int themeAlpha) {
+        final TypedArray a = context.obtainStyledAttributes(new int[]{R.attr.cardItemBackgroundColor});
+        final int color = a.getColor(0, Color.TRANSPARENT);
+        a.recycle();
+        if (isTransparentBackground(backgroundOption)) {
+            return themeAlpha << 24 | (0x00FFFFFF & color);
+        } else if (isSolidBackground(backgroundOption)) {
+            return TwidereColorUtils.getContrastYIQ(color, Color.WHITE, Color.BLACK);
+        } else {
+            return color;
+        }
+    }
+
+    public static Drawable getCompatToolbarOverlay(Activity activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) return null;
+        final Window window = activity.getWindow();
+        final View view = window.findViewById(android.support.v7.appcompat.R.id.decor_content_parent);
+        if (!(view instanceof ActionBarOverlayLayout)) {
+            final View contentLayout = window.findViewById(android.support.v7.appcompat.R.id.action_bar_activity_content);
+            if (contentLayout instanceof ContentFrameLayout) {
+                return contentLayout.getForeground();
+            }
+            return null;
+        }
+        try {
+            final Field field = ActionBarOverlayLayout.class.getDeclaredField("mWindowContentOverlay");
+            field.setAccessible(true);
+            return (Drawable) field.get(view);
+        } catch (Exception ignore) {
         }
         return null;
     }
 
-
-    @Deprecated
-    public static Drawable getActionBarBackground(final Context context, final boolean applyAlpha) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.background},
-                android.R.attr.actionBarStyle, 0);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, applyAlpha);
-    }
-
-    public static Drawable getActionBarBackground(final Context context, final int themeRes) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.background},
-                android.R.attr.actionBarStyle, themeRes);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, isTransparentBackground(themeRes));
-    }
-
-    public static Context getActionBarContext(final Context context) {
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.actionBarWidgetTheme});
-        final int resId = a.getResourceId(0, 0);
-        a.recycle();
-        if (resId == 0) return new TwidereContextWrapper(context);
-        return new TwidereContextThemeWrapper(context, resId, getUserThemeColor(context));
-    }
-
-    @Deprecated
-    public static Drawable getActionBarSplitBackground(final Context context, final boolean applyAlpha) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.backgroundSplit},
-                android.R.attr.actionBarStyle, 0);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, applyAlpha);
-    }
-
-    public static Drawable getActionBarSplitBackground(final Context context, final int themeRes) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.backgroundSplit},
-                android.R.attr.actionBarStyle, themeRes);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, isTransparentBackground(themeRes));
-    }
-
-    @Deprecated
-    public static Drawable getActionBarStackedBackground(final Context context, final boolean applyAlpha) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.backgroundStacked},
-                android.R.attr.actionBarStyle, 0);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, applyAlpha);
-    }
-
-    public static Drawable getActionBarStackedBackground(final Context context, final int themeRes) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.backgroundStacked},
-                android.R.attr.actionBarStyle, themeRes);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return applyActionBarDrawable(context, d, isTransparentBackground(themeRes));
-    }
-
-    public static int getActionIconColor(final Context context) {
-        return getActionIconColor(getThemeResource(context));
-    }
-
-    public static int getActionIconColor(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Light:
-            case R.style.Theme_Twidere_Light_SolidBackground:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_Compose:
-            case R.style.Theme_Twidere_Light_Dialog:
-            case R.style.Theme_Twidere_Colored:
-            case R.style.Theme_Twidere_Colored_SolidBackground:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_Compose:
-            case R.style.Theme_Twidere_ActionBar_Colored_Light:
-            case R.style.Theme_Twidere_Settings_Light:
-            case R.style.Theme_Twidere_Drawer_Light:
-            case R.style.Theme_Twidere_Drawer_Light_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_SolidBackground_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Compose_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Compose_DarkIcon:
-            case R.style.Theme_Twidere_Settings_Light_DarkActionBar_DarkIcon:
-                return 0x99333333;
-        }
-        return 0xCCFFFFFF;
-    }
-
-    public static Drawable getCardItemBackground(final Context context) {
-
-        final TypedArray a = context.obtainStyledAttributes(new int[]{R.attr.cardItemBackground});
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return d;
-    }
-
-    public static Drawable getCardItemMenuOverflowButtonDrawable(final Context context) {
-        final Resources res = getResources(context);
-        final TypedArray a = context.obtainStyledAttributes(new int[]{R.attr.cardOverflowIcon});
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        if (d == null) return res.getDrawable(R.drawable.ic_menu_moreoverflow_card_light);
-        return d;
-    }
-
-    public static int getColorBackgroundCacheHint(final Context context) {
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.colorBackgroundCacheHint});
-        final int color = a.getColor(0, Color.TRANSPARENT);
-        a.recycle();
-        return color;
-    }
-
     public static int getComposeThemeResource(final Context context) {
-        return getComposeThemeResource(getThemeNameOption(context), getDarkActionBarOption(context));
+        return getComposeThemeResource(getThemeNameOption(context));
     }
 
-    public static int getComposeThemeResource(final String name, final boolean darkActionBar) {
-        if (VALUE_THEME_NAME_TWIDERE.equals(name))
-            return darkActionBar ? R.style.Theme_Twidere_Colored_DarkActionBar_Compose
-                    : R.style.Theme_Twidere_Colored_Compose;
-        else if (VALUE_THEME_NAME_LIGHT.equals(name))
-            return darkActionBar ? R.style.Theme_Twidere_Light_DarkActionBar_Compose
-                    : R.style.Theme_Twidere_Light_Compose;
-        else if (VALUE_THEME_NAME_DARK.equals(name)) return R.style.Theme_Twidere_Dark_Compose;
-        return R.style.Theme_Twidere_Colored_Compose;
+    public static int getComposeThemeResource(final String name) {
+        if (VALUE_THEME_NAME_DARK.equals(name)) return R.style.Theme_Twidere_Dark_Compose;
+        return R.style.Theme_Twidere_Light_Compose;
     }
 
-    public static boolean getDarkActionBarOption(final Context context) {
-        if (context == null) return true;
-        final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
-        return pref.getBoolean(KEY_THEME_DARK_ACTIONBAR, true);
+    public static int getContrastForegroundColor(Context context, int theme, int color) {
+        final int[] colors = new int[2];
+        getDarkLightForegroundColors(context, theme, colors);
+        if (isDarkTheme(theme) || TwidereColorUtils.getYIQLuminance(color) <= ACCENT_COLOR_THRESHOLD) {
+            //return light text color
+            return colors[1];
+        }
+        //return dark text color
+        return colors[0];
     }
 
-    public static Context getDialogThemedContext(final Context context) {
-        return new TwidereContextThemeWrapper(context, getDialogThemeResource(context), getThemeColor(context));
+    public static int getContrastActionBarItemColor(Context context) {
+        return getColorFromAttribute(context, android.R.attr.colorForeground, 0);
     }
 
     public static int getDialogThemeResource(final Context context) {
@@ -306,34 +333,27 @@ public class ThemeUtils implements Constants {
         return R.style.Theme_Twidere_Light_Dialog;
     }
 
+    public static Context getDialogThemedContext(final Context context) {
+        return new ContextThemeWrapper(context, getDialogThemeResource(context));
+    }
+
+    public static int getDialogWhenLargeThemeResource(final Context context) {
+        return getDialogWhenLargeThemeResource(getThemeNameOption(context));
+    }
+
+    public static int getDialogWhenLargeThemeResource(final String name) {
+        if (VALUE_THEME_NAME_DARK.equals(name)) {
+            return R.style.Theme_Twidere_Dark_DialogWhenLarge_NoActionBar;
+        }
+        return R.style.Theme_Twidere_Light_DialogWhenLarge_NoActionBar;
+    }
+
     public static int getDrawerThemeResource(final Context context) {
-        return getDrawerThemeResource(getThemeResource(context));
+        return getDrawerThemeResource(getNoActionBarThemeResource(context));
     }
 
     public static int getDrawerThemeResource(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Dark_Transparent:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_Transparent:
-                return R.style.Theme_Twidere_Drawer_Dark_Transparent;
-        }
-        return R.style.Theme_Twidere_Drawer_Dark;
-    }
-
-    public static int getLightDrawerThemeResource(final Context context) {
-        return getLightDrawerThemeResource(getThemeResource(context));
-    }
-
-    public static int getLightDrawerThemeResource(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_Transparent:
-                return R.style.Theme_Twidere_Drawer_Light_Transparent;
-        }
+        if (isDarkTheme(themeRes)) return R.style.Theme_Twidere_Drawer_Dark;
         return R.style.Theme_Twidere_Drawer_Light;
     }
 
@@ -345,47 +365,6 @@ public class ThemeUtils implements Constants {
         return d;
     }
 
-    public static Drawable getListMenuOverflowButtonDrawable(final Context context) {
-        final Resources res = getResources(context);
-        final TypedArray a = context.obtainStyledAttributes(new int[]{R.attr.listMenuOverflowButton});
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        if (d == null)
-            return res.getDrawable(R.drawable.ic_list_menu_moreoverflow_normal_holo_light);
-        return d;
-    }
-
-    public static int getMenuIconColor(final Context context) {
-        return getMenuIconColor(getThemeResource(context));
-    }
-
-    public static int getMenuIconColor(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Light:
-            case R.style.Theme_Twidere_Light_SolidBackground:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_Compose:
-            case R.style.Theme_Twidere_Light_Dialog:
-            case R.style.Theme_Twidere_Colored:
-            case R.style.Theme_Twidere_Colored_SolidBackground:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_Compose:
-            case R.style.Theme_Twidere_ActionBar_Colored_Light:
-            case R.style.Theme_Twidere_Settings_Light:
-            case R.style.Theme_Twidere_Light_DarkActionBar_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_SolidBackground_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Compose_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Compose_DarkIcon:
-            case R.style.Theme_Twidere_Settings_Light_DarkActionBar_DarkIcon:
-                return 0x99333333;
-        }
-        return 0xCCFFFFFF;
-    }
-
     public static int getNoDisplayThemeResource(final Context context) {
         if (context == null) return R.style.Theme_Twidere_Dark_NoDisplay;
         final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
@@ -394,13 +373,32 @@ public class ThemeUtils implements Constants {
         return R.style.Theme_Twidere_Light_NoDisplay;
     }
 
-    public static Resources getResources(final Context context) {
-        if (context instanceof IThemedActivity) {
-            return ((IThemedActivity) context).getDefaultResources();
+    public static int getOptimalLinkColor(int linkColor, int textColor) {
+        final int[] yiq = new int[3];
+        TwidereColorUtils.colorToYIQ(textColor, yiq);
+        final int y = yiq[0];
+        TwidereColorUtils.colorToYIQ(linkColor, yiq);
+        if (y < 32 && yiq[0] <= ACCENT_COLOR_THRESHOLD) {
+            return linkColor;
+        } else if (y > ACCENT_COLOR_THRESHOLD && yiq[0] > 32) {
+            return linkColor;
         }
-        return context.getResources();
+        yiq[0] = yiq[0] + (y - yiq[0]) / 2;
+        return TwidereColorUtils.YIQToColor(Color.alpha(linkColor), yiq);
     }
 
+    public static int getQuickSearchBarThemeResource(final Context context) {
+        return getQuickSearchBarThemeResource(getThemeNameOption(context));
+    }
+
+    public static int getQuickSearchBarThemeResource(final String name) {
+        if (VALUE_THEME_NAME_DARK.equals(name)) return R.style.Theme_Twidere_Dark_QuickSearchBar;
+        return R.style.Theme_Twidere_Light_QuickSearchBar;
+    }
+
+    public static Resources getResources(final Context context) {
+        return context.getResources();
+    }
 
     public static Drawable getSelectableItemBackgroundDrawable(final Context context) {
         final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.selectableItemBackground});
@@ -411,33 +409,39 @@ public class ThemeUtils implements Constants {
         }
     }
 
-    public static int getSettingsThemeResource(final Context context) {
-        return getSettingsThemeResource(getThemeNameOption(context), getDarkActionBarOption(context));
+    public static float getSupportActionBarElevation(final Context context) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{R.attr.elevation}, R.attr.actionBarStyle, 0);
+        try {
+            return a.getDimension(0, 0);
+        } finally {
+            a.recycle();
+        }
     }
 
-    public static int getSettingsThemeResource(final String name, final boolean darkActionBar) {
-        if (VALUE_THEME_NAME_TWIDERE.equals(name) || VALUE_THEME_NAME_LIGHT.equals(name))
-            return darkActionBar ? R.style.Theme_Twidere_Settings_Light_DarkActionBar
-                    : R.style.Theme_Twidere_Settings_Light;
-        else if (VALUE_THEME_NAME_DARK.equals(name)) return R.style.Theme_Twidere_Settings_Dark;
-        return R.style.Theme_Twidere_Settings_Light_DarkActionBar;
+    public static int getColorFromAttribute(Context context, int attr, int def) {
+        final TypedValue outValue = new TypedValue();
+        if (!context.getTheme().resolveAttribute(attr, outValue, true))
+            return def;
+        if (outValue.type == TypedValue.TYPE_REFERENCE)
+            return context.getResources().getColor(attr);
+        return outValue.data;
     }
 
-    public static int getSettingsWizardThemeResource(final Context context) {
-        return R.style.Theme_Twidere_Settings_Light;
-    }
 
-    public static int getTextAppearanceLarge(final Context context) {
-        // final Context wrapped = getThemedContext(context,
-        // getResources(context));
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.textAppearanceLarge});
-        final int textAppearance = a.getResourceId(0, android.R.style.TextAppearance_Holo_Large);
-        a.recycle();
-        return textAppearance;
+    public static int getColorFromAttribute(Context context, int themeId, int attr, int def) {
+        final TypedValue outValue = new TypedValue();
+        final Resources.Theme theme = context.getResources().newTheme();
+        theme.applyStyle(themeId, true);
+        if (!theme.resolveAttribute(attr, outValue, true))
+            return def;
+        if (outValue.type == TypedValue.TYPE_REFERENCE)
+            return context.getResources().getColor(attr);
+        return outValue.data;
     }
 
     public static int getTextColorPrimary(final Context context) {
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.textColorPrimary});
+        final TypedArray a = context.obtainStyledAttributes(ATTRS_TEXT_COLOR_PRIMARY);
         try {
             return a.getColor(0, Color.TRANSPARENT);
         } finally {
@@ -445,29 +449,91 @@ public class ThemeUtils implements Constants {
         }
     }
 
-    public static int getTextColorSecondary(final Context context) {
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.textColorSecondary});
+
+    public static void getColorsFromAttribute(final Context context, int[] inAttrs, int[] outColors) {
+        final TypedArray a = context.obtainStyledAttributes(inAttrs);
         try {
-            return a.getColor(0, Color.TRANSPARENT);
+            for (int i = 0, j = inAttrs.length; i < j; i++) {
+                outColors[i] = a.getColor(i, 0);
+            }
         } finally {
             a.recycle();
         }
     }
 
-    public static int getThemeAlpha(final Context context) {
-        return getThemeAlpha(getThemeResource(context));
+    public static void getTextColorPrimaryAndInverse(final Context context, int[] colors) {
+        final TypedArray a = context.obtainStyledAttributes(ATTRS_TEXT_COLOR_PRIMARY_AND_INVERSE);
+        try {
+            colors[0] = a.getColor(0, Color.TRANSPARENT);
+            colors[1] = a.getColor(1, Color.TRANSPARENT);
+        } finally {
+            a.recycle();
+        }
     }
 
-    public static int getThemeAlpha(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Dark_Transparent:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-                return 0xa0;
+    public static void getDarkLightForegroundColors(final Context context, int themeRes, int[] colors) {
+        final TypedArray a = context.obtainStyledAttributes(ATTRS_COLOR_FOREGROUND_AND_INVERSE);
+        try {
+            if (isDarkTheme(themeRes)) {
+                colors[0] = a.getColor(1, Color.WHITE);
+                colors[1] = a.getColor(0, Color.BLACK);
+            } else {
+                colors[0] = a.getColor(0, Color.WHITE);
+                colors[1] = a.getColor(1, Color.BLACK);
+            }
+        } finally {
+            a.recycle();
         }
-        return 0xff;
+    }
+
+    public static void getDarkLightForegroundColors(final Context context, int[] colors) {
+        final TypedArray a = context.obtainStyledAttributes(ATTRS_COLOR_FOREGROUND_AND_INVERSE);
+        try {
+            final int foreground = a.getColor(0, 0), background = a.getColor(1, 0);
+
+            if (ColorUtils.calculateLuminance(foreground) > ColorUtils.calculateLuminance(background)) {
+                colors[0] = background;
+                colors[1] = foreground;
+            } else {
+                colors[0] = foreground;
+                colors[1] = background;
+            }
+        } finally {
+            a.recycle();
+        }
+    }
+
+    public static void getColorForegroundAndInverse(final Context context, int[] colors) {
+        final TypedArray a = context.obtainStyledAttributes(ATTRS_COLOR_FOREGROUND_AND_INVERSE);
+        try {
+            colors[0] = a.getColor(0, Color.WHITE);
+            colors[1] = a.getColor(1, Color.BLACK);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    public static int getThemeBackgroundColor(final Context context) {
+        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.colorBackground});
+        try {
+            return a.getColor(0, 0);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    public static int getThemeBackgroundColor(final Context context, int themeRes) {
+        if (themeRes == 0) {
+            return getThemeBackgroundColor(context);
+        }
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.colorBackground},
+                0, themeRes);
+        try {
+            return a.getColor(0, 0);
+        } finally {
+            a.recycle();
+        }
     }
 
     public static String getThemeBackgroundOption(final Context context) {
@@ -477,56 +543,26 @@ public class ThemeUtils implements Constants {
     }
 
     public static int getThemeColor(final Context context) {
-        final Resources res = getResources(context);
-        final Context wrapped = getThemedContext(context, res);
-        final TypedArray a = wrapped.obtainStyledAttributes(new int[]{android.R.attr.colorActivatedHighlight});
+        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.colorActivatedHighlight});
         try {
-            return a.getColor(0, res.getColor(android.R.color.holo_blue_light));
+            final Resources resources = context.getResources();
+            return a.getColor(0, resources.getColor(R.color.material_light_blue));
         } finally {
             a.recycle();
         }
     }
 
-    public static Context getThemedContext(final Context context) {
-        return new TwidereContextWrapper(context, getResources(context));
-    }
-
-    public static Context getThemedContext(final Context context, final Resources res) {
-        return new TwidereContextWrapper(context, res);
-    }
-
-    public static Context getThemedContextForActionIcons(final Context context) {
-        final int themeRes, accentColor;
-        if (context instanceof IThemedActivity) {
-            themeRes = ((IThemedActivity) context).getThemeResourceId();
-            accentColor = ((IThemedActivity) context).getOverrideAccentColor();
-        } else {
-            themeRes = getSettingsThemeResource(context);
-            accentColor = getUserThemeColor(context, themeRes);
+    public static int getThemeColor(Context context, int themeResourceId) {
+        final Context appContext = context.getApplicationContext();
+        final Resources res = appContext.getResources();
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = appContext.obtainStyledAttributes(null,
+                new int[]{android.R.attr.colorActivatedHighlight}, 0, themeResourceId);
+        try {
+            return a.getColor(0, res.getColor(R.color.material_light_blue));
+        } finally {
+            a.recycle();
         }
-        return new TwidereContextThemeWrapper(context, getThemeResActionIcons(themeRes), accentColor);
-    }
-
-    public static Context getThemedContextForActionIcons(final Context baseContext, final int baseThemeRes) {
-        return new TwidereContextWrapper(baseContext, getThemeResActionIcons(baseThemeRes));
-    }
-
-    public static Context getThemedContextForActionIcons(final Context baseContext, final int baseThemeRes,
-                                                         final int accentColor) {
-        return new TwidereContextThemeWrapper(baseContext, getThemeResActionIcons(baseThemeRes), accentColor);
-    }
-
-    public static LayoutInflater getThemedLayoutInflaterForActionIcons(final Context context) {
-        final int themeRes, accentColor;
-        if (context instanceof IThemedActivity) {
-            themeRes = ((IThemedActivity) context).getThemeResourceId();
-            accentColor = ((IThemedActivity) context).getOverrideAccentColor();
-        } else {
-            themeRes = getSettingsThemeResource(context);
-            accentColor = getUserThemeColor(context);
-        }
-        final Context theme = getThemedContextForActionIcons(context, themeRes, accentColor);
-        return LayoutInflater.from(theme);
     }
 
     public static String getThemeFontFamily(final Context context) {
@@ -538,21 +574,27 @@ public class ThemeUtils implements Constants {
     }
 
     public static int getThemeForegroundColor(final Context context) {
-        final Resources res = getResources(context);
-        final Context wrapped = getThemedContext(context, res);
-        final TypedArray a = wrapped.obtainStyledAttributes(new int[]{android.R.attr.colorForeground});
-        try {
-            return a.getColor(0, Color.GRAY);
-        } finally {
-            a.recycle();
-        }
+        return getThemeForegroundColor(context, 0);
     }
 
-    @NonNull
-    private static SharedPreferencesWrapper getSharedPreferencesWrapper(Context context) {
-        final Context appContext = context.getApplicationContext();
-        return SharedPreferencesWrapper.getInstance(appContext, SHARED_PREFERENCES_NAME,
-                Context.MODE_PRIVATE);
+    public static int getThemeForegroundColor(final Context context, int themeRes) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedValue value = new TypedValue();
+        final Resources.Theme theme;
+        if (themeRes != 0) {
+            theme = context.getResources().newTheme();
+            theme.applyStyle(themeRes, false);
+        } else {
+            theme = context.getTheme();
+        }
+        if (!theme.resolveAttribute(android.R.attr.colorForeground, value, true)) {
+            return 0;
+        }
+        if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT && value.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+            // windowBackground is a color
+            return value.data;
+        }
+        return 0;
     }
 
     public static String getThemeNameOption(final Context context) {
@@ -561,78 +603,58 @@ public class ThemeUtils implements Constants {
         return pref.getString(KEY_THEME, VALUE_THEME_NAME_TWIDERE);
     }
 
-    public static int getThemeResActionIcons(final int baseThemeRes) {
-        switch (baseThemeRes) {
-            case R.style.Theme_Twidere_Light_DarkActionBar: {
-                return R.style.Theme_Twidere_Light_DarkActionBar_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Light_DarkActionBar_SolidBackground: {
-                return R.style.Theme_Twidere_Light_DarkActionBar_SolidBackground_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent: {
-                return R.style.Theme_Twidere_Light_DarkActionBar_Transparent_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Light_DarkActionBar_Compose: {
-                return R.style.Theme_Twidere_Light_DarkActionBar_Compose_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Colored_DarkActionBar: {
-                return R.style.Theme_Twidere_Colored_DarkActionBar_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground: {
-                return R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent: {
-                return R.style.Theme_Twidere_Colored_DarkActionBar_Transparent_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Compose: {
-                return R.style.Theme_Twidere_Colored_DarkActionBar_Compose_DarkIcon;
-            }
-            case R.style.Theme_Twidere_Settings_Light_DarkActionBar: {
-                return R.style.Theme_Twidere_Settings_Light_DarkActionBar_DarkIcon;
-            }
-        }
-        return baseThemeRes;
-    }
-
-    public static int getThemeResource(final Context context) {
-        return getThemeResource(getThemeNameOption(context), getThemeBackgroundOption(context),
-                getDarkActionBarOption(context));
-    }
-
-    public static int getThemeResource(final String name, final String background, final boolean darkActionBar) {
-        if (VALUE_THEME_NAME_TWIDERE.equals(name)) {
-            if (VALUE_THEME_BACKGROUND_SOLID.equals(background))
-                return darkActionBar ? R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground
-                        : R.style.Theme_Twidere_Colored_SolidBackground;
-            else if (VALUE_THEME_BACKGROUND_TRANSPARENT.equals(background))
-                return darkActionBar ? R.style.Theme_Twidere_Colored_DarkActionBar_Transparent
-                        : R.style.Theme_Twidere_Colored_Transparent;
-            return darkActionBar ? R.style.Theme_Twidere_Colored_DarkActionBar : R.style.Theme_Twidere_Colored;
-        } else if (VALUE_THEME_NAME_LIGHT.equals(name)) {
-            if (VALUE_THEME_BACKGROUND_SOLID.equals(background))
-                return darkActionBar ? R.style.Theme_Twidere_Light_DarkActionBar_SolidBackground
-                        : R.style.Theme_Twidere_Light_SolidBackground;
-            else if (VALUE_THEME_BACKGROUND_TRANSPARENT.equals(background))
-                return darkActionBar ? R.style.Theme_Twidere_Light_DarkActionBar_Transparent
-                        : R.style.Theme_Twidere_Light_Transparent;
-            return darkActionBar ? R.style.Theme_Twidere_Light_DarkActionBar : R.style.Theme_Twidere_Light;
-
-        } else if (VALUE_THEME_NAME_DARK.equals(name)) {
-            if (VALUE_THEME_BACKGROUND_SOLID.equals(background))
-                return R.style.Theme_Twidere_Dark_SolidBackground;
-            else if (VALUE_THEME_BACKGROUND_TRANSPARENT.equals(background))
-                return R.style.Theme_Twidere_Dark_Transparent;
+    public static int getThemeResource(final int otherTheme) {
+        if (isDarkTheme(otherTheme)) {
             return R.style.Theme_Twidere_Dark;
         }
-        return R.style.Theme_Twidere_Colored_DarkActionBar;
+        return R.style.Theme_Twidere_Light;
+    }
+
+    public static int getNoActionBarThemeResource(final Context context) {
+        return getNoActionBarThemeResource(getThemeNameOption(context));
+    }
+
+    public static int getNoActionBarThemeResource(final String name) {
+        if (VALUE_THEME_NAME_DARK.equals(name)) {
+            return R.style.Theme_Twidere_Dark_NoActionBar;
+        }
+        return R.style.Theme_Twidere_Light_NoActionBar;
     }
 
     public static int getTitleTextAppearance(final Context context) {
+        @SuppressWarnings("ConstantConditions")
         final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.titleTextStyle},
                 android.R.attr.actionBarStyle, android.R.style.Widget_Holo_ActionBar);
         final int textAppearance = a.getResourceId(0, android.R.style.TextAppearance_Holo);
         a.recycle();
         return textAppearance;
+    }
+
+    public static int getUserAccentColor(final Context context) {
+        if (context == null) return Color.TRANSPARENT;
+        final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
+        final Resources res = context.getResources();
+        final int def = res.getColor(R.color.branding_color);
+        return pref.getInt(KEY_THEME_COLOR, def);
+    }
+
+    public static int getOptimalAccentColor(final Context context, boolean isActionBarContext, int themeResId) {
+        final int userAccentColor = getUserAccentColor(context);
+        final int backgroundColorApprox;
+        final boolean isDarkTheme = isDarkTheme(themeResId);
+        if (!isActionBarContext) {
+            backgroundColorApprox = isDarkTheme ? Color.BLACK : Color.WHITE;
+        } else if (isDarkTheme) {
+            // View context is derived from ActionBar but is currently dark theme, so we should show
+            // light
+            backgroundColorApprox = Color.BLACK;
+        } else {
+            // View context is derived from ActionBar and it's light theme, so we use contrast color
+            backgroundColorApprox = Color.WHITE;
+        }
+        if (Math.abs(TwidereColorUtils.getYIQContrast(backgroundColorApprox, userAccentColor)) > 64)
+            return userAccentColor;
+        return getColorFromAttribute(context, R.attr.colorAccent, context.getResources().getColor(R.color.branding_color));
     }
 
     public static int getUserHighlightColor(final Context context) {
@@ -643,7 +665,7 @@ public class ThemeUtils implements Constants {
 
     public static int getUserLinkTextColor(final Context context) {
         if (context == null) return new TextPaint().linkColor;
-        final int themeColor = getUserThemeColor(context);
+        final int themeColor = getUserAccentColor(context);
         final float[] hsv = new float[3];
         Color.colorToHSV(themeColor, hsv);
         if (isDarkTheme(context)) {
@@ -657,22 +679,15 @@ public class ThemeUtils implements Constants {
     public static int getUserThemeBackgroundAlpha(final Context context) {
         if (context == null) return DEFAULT_THEME_BACKGROUND_ALPHA;
         final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
-        return pref.getInt(KEY_THEME_BACKGROUND_ALPHA, DEFAULT_THEME_BACKGROUND_ALPHA);
+        return MathUtils.clamp(pref.getInt(KEY_THEME_BACKGROUND_ALPHA, DEFAULT_THEME_BACKGROUND_ALPHA),
+                ThemeBackgroundPreference.MIN_ALPHA, ThemeBackgroundPreference.MAX_ALPHA);
     }
 
-    public static int getUserThemeColor(final Context context) {
-        if (context == null) return Color.TRANSPARENT;
-        final Resources res = getResources(context);
-        final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
-        final int def = res.getColor(android.R.color.holo_blue_light);
-        return pref.getInt(KEY_THEME_COLOR, def);
-    }
-
-    public static int getUserThemeColor(final Context context, int themeRes) {
-        if (context == null) return Color.TRANSPARENT;
-        final int defThemeColor = getThemeColor(context, themeRes);
-        final SharedPreferencesWrapper pref = getSharedPreferencesWrapper(context);
-        return pref.getInt(KEY_THEME_COLOR, defThemeColor);
+    public static int getActionBarAlpha(final int alpha) {
+        final int normalizedAlpha = MathUtils.clamp(alpha, 0, 0xFF);
+        final int delta = (ThemeBackgroundPreference.MAX_ALPHA - normalizedAlpha);
+        return MathUtils.clamp(ThemeBackgroundPreference.MAX_ALPHA - delta / 2,
+                ThemeBackgroundPreference.MIN_ALPHA, ThemeBackgroundPreference.MAX_ALPHA);
     }
 
     public static Typeface getUserTypeface(final Context context, final Typeface defTypeface) {
@@ -685,162 +700,146 @@ public class ThemeUtils implements Constants {
         return Typeface.create(Typeface.DEFAULT, fontStyle);
     }
 
+    public static Typeface getUserTypeface(final Context context, final String fontFamily, final Typeface defTypeface) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN)
+            return Typeface.DEFAULT;
+        final int fontStyle = defTypeface != null ? defTypeface.getStyle() : Typeface.NORMAL;
+        final Typeface tf = Typeface.create(fontFamily, fontStyle);
+        if (tf != null) return tf;
+        return Typeface.create(Typeface.DEFAULT, fontStyle);
+    }
+
     public static int getViewerThemeResource(final Context context) {
-        final boolean isTransparent = VALUE_THEME_BACKGROUND_TRANSPARENT.equals(getThemeBackgroundOption(context));
-        return isTransparent ? R.style.Theme_Twidere_Viewer_Transparent : R.style.Theme_Twidere_Viewer;
+        return R.style.Theme_Twidere_Viewer;
     }
 
     public static Drawable getWindowBackground(final Context context) {
         final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.windowBackground});
+        try {
+            return a.getDrawable(0);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    public static Drawable getWindowBackgroundFromTheme(final Context context, int theme) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.windowBackground}, 0, theme);
+        try {
+            return a.getDrawable(0);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    public static Drawable getWindowBackgroundFromThemeApplyAlpha(final Context context, final int theme, final int alpha) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.windowBackground}, 0, theme);
         final Drawable d = a.getDrawable(0);
         a.recycle();
-        if (isTransparentBackground(context)) {
-            applyThemeBackgroundAlphaToDrawable(context, d);
-        }
+        if (d == null) return null;
+        d.mutate();
+        d.setAlpha(MathUtils.clamp(alpha, ThemeBackgroundPreference.MIN_ALPHA,
+                ThemeBackgroundPreference.MAX_ALPHA));
         return d;
     }
 
-    public static Drawable getWindowBackground(final Context context, final int themeRes) {
-        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.windowBackground}, 0,
-                themeRes);
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        if (isTransparentBackground(themeRes)) {
-            applyThemeBackgroundAlphaToDrawable(context, d);
+    public static Drawable getWindowContentOverlay(final Context context, int themeRes) {
+        @SuppressWarnings("ConstantConditions")
+        final TypedArray a = context.obtainStyledAttributes(null, new int[]{android.R.attr.windowContentOverlay}, 0, themeRes);
+        try {
+            return a.getDrawable(0);
+        } finally {
+            a.recycle();
         }
-        return d;
     }
 
-    public static Drawable getWindowContentOverlay(final Context context) {
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.windowContentOverlay});
-        final Drawable d = a.getDrawable(0);
-        a.recycle();
-        return d;
+    public static Drawable getNormalWindowContentOverlay(final Context context, int themeRes) {
+        final int normalThemeResId = ThemeUtils.getThemeResource(themeRes);
+        return getWindowContentOverlay(context, normalThemeResId);
     }
 
-    public static Drawable getWindowContentOverlayForCompose(final Context context) {
-        final int themeRes = getThemeResource(context);
-        return getWindowContentOverlay(new ContextThemeWrapper(context, themeRes));
-    }
-
-    public static boolean isColoredActionBar(final Context context) {
-        return isColoredActionBar(getThemeResource(context));
-    }
-
-    public static boolean isColoredActionBar(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Colored:
-            case R.style.Theme_Twidere_Colored_SolidBackground:
-            case R.style.Theme_Twidere_Colored_Compose:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Compose:
-                return true;
+    public static void initPagerIndicatorAsActionBarTab(FragmentActivity activity, TabPagerIndicator indicator, @Nullable View pagerOverlay) {
+        final float supportActionBarElevation = getSupportActionBarElevation(activity);
+        ViewCompat.setElevation(indicator, supportActionBarElevation);
+        if (!(activity instanceof IThemedActivity)) return;
+        final int themeRes = ((IThemedActivity) activity).getCurrentThemeResourceId();
+        final int themeColor = ((IThemedActivity) activity).getCurrentThemeColor();
+        final String backgroundOption = ((IThemedActivity) activity).getCurrentThemeBackgroundOption();
+        final int colorDark, colorLight;
+        final int[] textColors = new int[2];
+        getTextColorPrimaryAndInverse(activity, textColors);
+        if (isDarkTheme(themeRes)) {
+            colorDark = textColors[1];
+            colorLight = textColors[0];
+        } else {
+            colorDark = textColors[0];
+            colorLight = textColors[1];
         }
-        return false;
+        final int contrastColor = TwidereColorUtils.getContrastYIQ(themeColor, ACCENT_COLOR_THRESHOLD,
+                colorDark, colorLight);
+        ViewSupport.setBackground(indicator, getActionBarStackedBackground(activity, themeRes, themeColor, backgroundOption, true));
+        if (isDarkTheme(themeRes)) {
+            final int foregroundColor = getThemeForegroundColor(activity);
+            indicator.setIconColor(foregroundColor);
+            indicator.setLabelColor(foregroundColor);
+            indicator.setStripColor(themeColor);
+        } else {
+            indicator.setIconColor(contrastColor);
+            indicator.setLabelColor(contrastColor);
+            indicator.setStripColor(contrastColor);
+        }
+        indicator.updateAppearance();
+        if (pagerOverlay != null) {
+            ViewSupport.setBackground(pagerOverlay, getNormalWindowContentOverlay(activity, themeRes));
+        }
     }
 
-    public static boolean isDarkDrawerEnabled(final Context context) {
-        final SharedPreferencesWrapper prefs = SharedPreferencesWrapper.getInstance(context, SHARED_PREFERENCES_NAME,
-                Context.MODE_PRIVATE);
-        if (prefs == null) return false;
-        return prefs.getBoolean(KEY_DARK_DRAWER, true);
+    public static boolean isColoredActionBar(int themeRes) {
+        return !isDarkTheme(themeRes);
     }
 
     public static boolean isDarkTheme(final Context context) {
-        if (context instanceof ITwidereContextWrapper)
-            return isDarkTheme(((ITwidereContextWrapper) context).getThemeResourceId());
-        return isDarkTheme(getThemeResource(context));
+        return isDarkTheme(getNoActionBarThemeResource(context));
     }
 
     public static boolean isDarkTheme(final int themeRes) {
         switch (themeRes) {
             case R.style.Theme_Twidere_Dark:
-            case R.style.Theme_Twidere_Dark_SolidBackground:
+            case R.style.Theme_Twidere_Dark_NoActionBar:
             case R.style.Theme_Twidere_Dark_Dialog:
+            case R.style.Theme_Twidere_Dark_DialogWhenLarge_NoActionBar:
             case R.style.Theme_Twidere_Dark_Compose:
-            case R.style.Theme_Twidere_Dark_Transparent:
                 return true;
         }
         return false;
     }
 
-    public static boolean isFloatingWindow(final Context context) {
-
-        final TypedArray a = context.obtainStyledAttributes(new int[]{android.R.attr.windowIsFloating});
-        final boolean b = a.getBoolean(0, false);
-        a.recycle();
-        return b;
-    }
-
-    public static boolean isLightActionBar(final Context context) {
-        return isLightActionBar(getThemeResource(context));
-    }
-
-    public static boolean isLightActionBar(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Light:
-            case R.style.Theme_Twidere_Light_SolidBackground:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_Compose:
-            case R.style.Theme_Twidere_Colored:
-            case R.style.Theme_Twidere_Colored_SolidBackground:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_Compose:
-            case R.style.Theme_Twidere_Settings_Light:
-                return true;
-        }
-        return false;
-    }
-
-    public static boolean isSolidBackground(final Context context) {
-        return VALUE_THEME_BACKGROUND_SOLID.equals(getThemeBackgroundOption(context));
+    public static boolean isSolidBackground(final String option) {
+        return VALUE_THEME_BACKGROUND_SOLID.equals(option);
     }
 
     public static boolean isTransparentBackground(final Context context) {
-        return isTransparentBackground(getThemeResource(context));
+        return isTransparentBackground(getThemeBackgroundOption(context));
     }
 
-    public static boolean isTransparentBackground(final int themeRes) {
-        switch (themeRes) {
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Dark_Transparent:
-            case R.style.Theme_Twidere_Light_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent:
-            case R.style.Theme_Twidere_Light_DarkActionBar_Transparent_DarkIcon:
-            case R.style.Theme_Twidere_Viewer_Transparent:
-                return true;
-        }
-        return false;
+    public static boolean isTransparentBackground(final String option) {
+        return VALUE_THEME_BACKGROUND_TRANSPARENT.equals(option);
     }
 
-    public static void notifyStatusBarColorChanged(final Context context, final int themeResource,
-                                                   final int accentColor, final int backgroundAlpha) {
-        final Intent intent = new Intent("com.mohammadag.colouredstatusbar.ChangeStatusBarColor");
-        if (isColoredActionBar(themeResource)) {
-            intent.putExtra("status_bar_color", backgroundAlpha << 24 | accentColor);
+    public static boolean isWindowFloating(Context context, int theme) {
+        final TypedArray a;
+        if (theme != 0) {
+            //noinspection ConstantConditions
+            a = context.obtainStyledAttributes(null, new int[]{android.R.attr.windowIsFloating}, 0, theme);
         } else {
-            if (isLightActionBar(themeResource)) {
-                intent.putExtra("status_bar_color", backgroundAlpha << 24 | 0xFFDDDDDD);
-            } else {
-                intent.putExtra("status_bar_color", backgroundAlpha << 24 | 0xFF222222);
-            }
+            a = context.obtainStyledAttributes(new int[]{android.R.attr.windowIsFloating});
         }
-        if (isLightActionBar(themeResource)) {
-            intent.putExtra("status_bar_icons_color", Color.DKGRAY);
-        } else {
-            intent.putExtra("status_bar_icons_color", Color.WHITE);
+        try {
+            return a.getBoolean(0, false);
+        } finally {
+            a.recycle();
         }
-        // Please note that these are not yet implemented!!!
-        // You're free to include them in your code so that when they
-        // are implemented, your app will work out of the box.
-        intent.putExtra("navigation_bar_color", Color.BLACK);
-        intent.putExtra("navigation_bar_icon_color", Color.WHITE);
-        context.sendOrderedBroadcast(intent, null);
     }
 
     public static void overrideActivityCloseAnimation(final Activity activity) {
@@ -873,6 +872,7 @@ public class ThemeUtils implements Constants {
     }
 
     public static void overrideNormalActivityCloseAnimation(final Activity activity) {
+        @SuppressWarnings("ConstantConditions")
         final TypedArray a = activity.obtainStyledAttributes(null, ANIM_CLOSE_STYLE_ATTRS,
                 0, android.R.style.Animation_Activity);
         final int activityCloseEnterAnimation = a.getResourceId(0, 0);
@@ -881,90 +881,287 @@ public class ThemeUtils implements Constants {
         activity.overridePendingTransition(activityCloseEnterAnimation, activityCloseExitAnimation);
     }
 
-    public static boolean shouldApplyColorFilter(final Context context) {
-        return shouldApplyColorFilter(getThemeResource(context));
-    }
-
-    public static boolean shouldApplyColorFilter(final int res) {
-        switch (res) {
-            case R.style.Theme_Twidere_Colored:
-            case R.style.Theme_Twidere_Colored_SolidBackground:
-            case R.style.Theme_Twidere_Colored_Compose:
-            case R.style.Theme_Twidere_Colored_Transparent:
-            case R.style.Theme_Twidere_Colored_DarkActionBar:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_SolidBackground:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Compose:
-            case R.style.Theme_Twidere_Colored_DarkActionBar_Transparent:
-                return false;
+    public static void resetCheatSheet(ActionMenuView menuView) {
+        final OnLongClickListener listener = new OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                if (((ActionMenuItemView) v).hasText()) return false;
+                final MenuItem menuItem = ((ActionMenuItemView) v).getItemData();
+                Utils.showMenuItemToast(v, menuItem.getTitle(), true);
+                return true;
+            }
+        };
+        for (int i = 0, j = menuView.getChildCount(); i < j; i++) {
+            final View child = menuView.getChildAt(i);
+            if (!(child instanceof ActionMenuItemView)) continue;
+            final ActionMenuItemView itemView = (ActionMenuItemView) child;
+            final MenuItem menuItem = itemView.getItemData();
+            if (menuItem.hasSubMenu()) continue;
+            itemView.setOnLongClickListener(listener);
         }
-        return true;
     }
 
-    public static boolean shouldApplyColorFilterToActionIcons(final Context context) {
-        return false;
-    }
-
-    public static boolean shouldApplyColorFilterToActionIcons(final int res) {
-        return false;
-    }
-
-    private static Drawable applyActionBarDrawable(final Context context, final Drawable d, final boolean applyAlpha) {
-        if (d == null) return null;
-        d.mutate();
-        if (d instanceof LayerDrawable) {
-            final Drawable colorLayer = ((LayerDrawable) d).findDrawableByLayerId(R.id.color_layer);
-            if (colorLayer != null) {
-                final int color = getUserThemeColor(context);
-                colorLayer.setColorFilter(color, PorterDuff.Mode.MULTIPLY);
+    public static void setActionBarOverflowColor(Toolbar toolbar, int itemColor) {
+        if (toolbar == null) return;
+        if (toolbar instanceof TwidereToolbar) {
+            ((TwidereToolbar) toolbar).setItemColor(itemColor);
+        }
+        final ActionMenuView actionMenuView = ViewSupport.findViewByType(toolbar, ActionMenuView.class);
+        if (actionMenuView == null) return;
+        View overflowView = null;
+        for (int i = 0, j = actionMenuView.getChildCount(); i < j; i++) {
+            final View child = actionMenuView.getChildAt(i);
+            final ActionMenuView.LayoutParams lp = (ActionMenuView.LayoutParams) child.getLayoutParams();
+            if (lp.isOverflowButton) {
+                overflowView = child;
+                break;
             }
         }
-        if (applyAlpha) {
-            d.setAlpha(getThemeAlpha(context));
+        if (!(overflowView instanceof ImageView)) return;
+        ((ImageView) overflowView).setColorFilter(itemColor, Mode.SRC_ATOP);
+    }
+
+    public static void setActionBarMenuItemsColor(Toolbar toolbar, int itemColor) {
+        if (toolbar == null) return;
+        if (toolbar instanceof TwidereToolbar) {
+            ((TwidereToolbar) toolbar).setItemColor(itemColor);
         }
-        return d;
-    }
-
-    private static View newViewInstance(final String className, final Context context, final AttributeSet attrs)
-            throws ClassNotFoundException, NoSuchMethodException, InstantiationException, IllegalAccessException,
-            InvocationTargetException {
-        final Class<?> viewCls = Class.forName(className);
-        final Constructor<?> constructor = viewCls.getConstructor(Context.class, AttributeSet.class);
-        return (View) constructor.newInstance(context, attrs);
-    }
-
-    public static void initResourceInterceptors(Context context, AccentResources resources) {
-        resources.addInterceptor(new ActionIconsInterceptor(context, resources.getDisplayMetrics(), 0));
-        resources.addInterceptor(new ActivityIconsInterceptor(context, resources.getDisplayMetrics(), 0));
-        resources.addInterceptor(new WhiteDrawableInterceptor(resources));
-    }
-
-    public static void initResourceInterceptors(Context context, NoAccentResources resources) {
-        resources.addInterceptor(new ActionIconsInterceptor(context, resources.getDisplayMetrics(), 0));
-        resources.addInterceptor(new ActivityIconsInterceptor(context, resources.getDisplayMetrics(), 0));
-        resources.addInterceptor(new WhiteDrawableInterceptor(resources));
-    }
-
-    public static int findAttributeResourceValue(AttributeSet attrs, String name, int defaultValue) {
-        for (int i = 0, j = attrs.getAttributeCount(); i < j; i++) {
-            if (attrs.getAttributeName(i).equals(name))
-                return attrs.getAttributeResourceValue(i, defaultValue);
+        final ActionMenuView actionMenuView = ViewSupport.findViewByType(toolbar, ActionMenuView.class);
+        if (actionMenuView == null) return;
+        for (int i = 0, j = actionMenuView.getChildCount(); i < j; i++) {
+            final View child = actionMenuView.getChildAt(i);
+            if (child instanceof ActionMenuView.ActionMenuChildView && child instanceof ImageView) {
+                ((ImageView) child).setColorFilter(itemColor, Mode.SRC_ATOP);
+            }
         }
-        return defaultValue;
     }
 
-    public static Resources getThemedResourcesForActionIcons(Context context, int themeRes, int accentColor) {
-        return getThemedContextForActionIcons(context, themeRes, accentColor).getResources();
+    public static void setActionBarOverflowColor(ActionMenuPresenter presenter, int itemColor) {
+        if (presenter == null) return;
+        final View view = (View) Utils.findFieldOfTypes(presenter, ActionMenuPresenter.class,
+                ActionMenuView.ActionMenuChildView.class, View.class);
+        if (!(view instanceof ImageView)) return;
+        ((ImageView) view).setColorFilter(itemColor, Mode.SRC_ATOP);
     }
 
-    public static int getThemeColor(Context context, int themeResourceId) {
-        final Context appContext = context.getApplicationContext();
-        final Resources res = appContext.getResources();
-        final TypedArray a = appContext.obtainStyledAttributes(null,
-                new int[]{android.R.attr.colorActivatedHighlight}, 0, themeResourceId);
+    public static void setActionBarOverflowColor(ActionMenuView actionMenuView, int itemColor) {
+        if (actionMenuView == null) return;
+        View overflowView = null;
+        for (int i = 0, j = actionMenuView.getChildCount(); i < j; i++) {
+            final View child = actionMenuView.getChildAt(i);
+            final ActionMenuView.LayoutParams lp = (ActionMenuView.LayoutParams) child.getLayoutParams();
+            if (lp.isOverflowButton) {
+                overflowView = child;
+                break;
+            }
+        }
+        if (!(overflowView instanceof ImageView)) return;
+        final Drawable drawable = ((ImageView) overflowView).getDrawable();
+        if (drawable == null) return;
+        drawable.setColorFilter(itemColor, Mode.SRC_ATOP);
+    }
+
+    public static void setCompatToolbarOverlay(Activity activity, Drawable overlay) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) return;
+        final Window window = activity.getWindow();
+        final View view = window.findViewById(android.support.v7.appcompat.R.id.decor_content_parent);
+        if (!(view instanceof ActionBarOverlayLayout)) return;
         try {
-            return a.getColor(0, res.getColor(android.R.color.holo_blue_light));
-        } finally {
-            a.recycle();
+            final Field field = ActionBarOverlayLayout.class.getDeclaredField("mWindowContentOverlay");
+            field.setAccessible(true);
+            field.set(view, overlay);
+        } catch (Exception ignore) {
+        }
+    }
+
+    public static void setCompatContentViewOverlay(Activity activity, Drawable overlay) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) return;
+        final Window window = activity.getWindow();
+        View contentLayout = window.findViewById(android.support.v7.appcompat.R.id.action_bar_activity_content);
+        if (contentLayout == null) {
+            contentLayout = window.findViewById(android.R.id.content);
+        }
+        if (contentLayout instanceof FrameLayout) {
+            ViewSupport.setForeground(contentLayout, overlay);
+        }
+    }
+
+    public static void setWindowOverlayViewOverlay(Activity activity, Drawable overlay) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) return;
+        final Window window = activity.getWindow();
+        final View windowOverlay = window.findViewById(R.id.window_overlay);
+        if (windowOverlay == null) {
+            return;
+        }
+        ViewSupport.setBackground(windowOverlay, overlay);
+    }
+
+    public static void setupDrawerBackground(Context context, View view) {
+        if (!(context instanceof IThemedActivity)) return;
+        final int themeRes = ((IThemedActivity) context).getCurrentThemeResourceId();
+        final int drawerThemeRes = getDrawerThemeResource(themeRes);
+        final String backgroundOption = ((IThemedActivity) context).getThemeBackgroundOption();
+        final int alpha = ((IThemedActivity) context).getCurrentThemeBackgroundAlpha();
+        final Drawable d;
+        if (isSolidBackground(backgroundOption)) {
+            d = new ColorDrawable(isDarkTheme(themeRes) ? Color.BLACK : Color.WHITE);
+        } else {
+            d = getWindowBackgroundFromTheme(context, drawerThemeRes);
+        }
+        if (d == null) throw new NullPointerException();
+        d.mutate();
+        if (isTransparentBackground(backgroundOption)) {
+            d.setAlpha(alpha);
+        }
+        ViewSupport.setBackground(view, d);
+    }
+
+    public static void wrapMenuIcon(@NonNull Menu menu, int itemColor, int subItemColor, int... excludeGroups) {
+        for (int i = 0, j = menu.size(); i < j; i++) {
+            final MenuItem item = menu.getItem(i);
+            wrapMenuItemIcon(item, itemColor, excludeGroups);
+            if (item.hasSubMenu()) {
+                wrapMenuIcon(item.getSubMenu(), subItemColor, subItemColor, excludeGroups);
+            }
+        }
+    }
+
+    public static void wrapMenuIcon(ActionMenuView view, int... excludeGroups) {
+        final Resources resources = view.getResources();
+        final int colorDark = resources.getColor(R.color.action_icon_dark);
+        final int colorLight = resources.getColor(R.color.action_icon_light);
+        wrapMenuIcon(view, colorDark, colorLight, excludeGroups);
+    }
+
+    public static void wrapMenuIcon(ActionMenuView view, int colorDark, int colorLight, int... excludeGroups) {
+        final int itemBackgroundColor = ThemeUtils.getThemeBackgroundColor(view.getContext());
+        final int popupItemBackgroundColor = ThemeUtils.getThemeBackgroundColor(view.getContext(), view.getPopupTheme());
+        final int itemColor = TwidereColorUtils.getContrastYIQ(itemBackgroundColor, colorDark, colorLight);
+        final int popupItemColor = TwidereColorUtils.getContrastYIQ(popupItemBackgroundColor, colorDark, colorLight);
+        final Menu menu = view.getMenu();
+        final int childCount = view.getChildCount();
+        for (int i = 0, j = menu.size(), k = 0; i < j; i++) {
+            final MenuItem item = menu.getItem(i);
+            wrapMenuItemIcon(item, itemColor, excludeGroups);
+            if (item.hasSubMenu()) {
+                wrapMenuIcon(item.getSubMenu(), popupItemColor, popupItemColor, excludeGroups);
+            }
+            if (item.isVisible()) {
+                k++;
+            }
+        }
+    }
+
+
+    public static void wrapMenuItemIcon(@NonNull MenuItem item, int itemColor, int... excludeGroups) {
+        if (ArrayUtils.contains(excludeGroups, item.getGroupId())) return;
+        final Drawable icon = item.getIcon();
+        if (icon == null) return;
+        if (icon instanceof ActionIconDrawable) {
+            ((ActionIconDrawable) icon).setDefaultColor(itemColor);
+            item.setIcon(icon);
+            return;
+        }
+        icon.mutate();
+        final Drawable.Callback callback = icon.getCallback();
+        final ActionIconDrawable newIcon = new ActionIconDrawable(icon, itemColor);
+        newIcon.setCallback(callback);
+        item.setIcon(newIcon);
+    }
+
+    public static void wrapToolbarMenuIcon(@Nullable ActionMenuView view, int itemColor, int popupItemColor, int... excludeGroups) {
+        if (view == null) return;
+        final Menu menu = view.getMenu();
+        final int childCount = view.getChildCount();
+        for (int i = 0, j = menu.size(), k = 0; i < j; i++) {
+            final MenuItem item = menu.getItem(i);
+            wrapMenuItemIcon(item, itemColor, excludeGroups);
+            if (item.hasSubMenu()) {
+                wrapMenuIcon(item.getSubMenu(), popupItemColor, popupItemColor, excludeGroups);
+            }
+            if (item.isVisible()) {
+                k++;
+            }
+        }
+    }
+
+    @NonNull
+    private static SharedPreferencesWrapper getSharedPreferencesWrapper(Context context) {
+        final Context appContext = context.getApplicationContext();
+        return SharedPreferencesWrapper.getInstance(appContext, SHARED_PREFERENCES_NAME,
+                Context.MODE_PRIVATE);
+    }
+
+    public static int getActionBarHeight(Context context) {
+        final TypedValue tv = new TypedValue();
+        final Resources.Theme theme = context.getTheme();
+        final int attr = R.attr.actionBarSize;
+        if (theme.resolveAttribute(attr, tv, true)) {
+            return TypedValue.complexToDimensionPixelSize(tv.data, context.getResources().getDisplayMetrics());
+        }
+        return 0;
+    }
+
+    public static Context getActionBarThemedContext(Context base) {
+        final TypedValue outValue = new TypedValue();
+        final Resources.Theme baseTheme = base.getTheme();
+        baseTheme.resolveAttribute(android.support.v7.appcompat.R.attr.actionBarTheme, outValue, true);
+
+        if (outValue.resourceId != 0) {
+            final Resources.Theme actionBarTheme = base.getResources().newTheme();
+            actionBarTheme.setTo(baseTheme);
+            actionBarTheme.applyStyle(outValue.resourceId, true);
+
+            final ActionBarContextThemeWrapper actionBarContext = new ActionBarContextThemeWrapper(base, outValue.resourceId);
+            actionBarContext.getTheme().setTo(actionBarTheme);
+            return actionBarContext;
+        } else {
+            return base;
+        }
+    }
+
+    public static Context getActionBarThemedContext(Context base, int themeId, int accentColor) {
+        final int actionBarThemeId;
+        if (isDarkTheme(themeId) || TwidereColorUtils.getYIQLuminance(accentColor) <= ACCENT_COLOR_THRESHOLD) {
+            actionBarThemeId = R.style.Theme_Twidere_Dark;
+        } else {
+            actionBarThemeId = R.style.Theme_Twidere_Light;
+        }
+        final Resources.Theme baseTheme = base.getTheme();
+        final Resources.Theme actionBarTheme = base.getResources().newTheme();
+        actionBarTheme.setTo(baseTheme);
+        actionBarTheme.applyStyle(actionBarThemeId, true);
+
+        final ActionBarContextThemeWrapper actionBarContext = new ActionBarContextThemeWrapper(base, actionBarThemeId);
+        actionBarContext.getTheme().setTo(actionBarTheme);
+        return actionBarContext;
+    }
+
+    public static int getActionBarColor(Context context, int themeColor, int themeResId, String backgroundOption) {
+        if (!isDarkTheme(themeResId)) {
+            return themeColor;
+        } else if (isSolidBackground(backgroundOption)) {
+            return Color.BLACK;
+        }
+        return context.getResources().getColor(R.color.background_color_action_bar_dark);
+    }
+
+    public static boolean isDarkTheme(final String name) {
+        return VALUE_THEME_NAME_DARK.equals(name);
+    }
+
+    public static int getActionBarThemeResource(int themeId, int accentColor) {
+        if (isDarkTheme(themeId) || TwidereColorUtils.getYIQLuminance(accentColor) <= ACCENT_COLOR_THRESHOLD) {
+            return R.style.Theme_Twidere_Dark;
+        } else {
+            return R.style.Theme_Twidere_Light;
+        }
+    }
+
+    public static final class ActionBarContextThemeWrapper extends android.support.v7.internal.view.ContextThemeWrapper {
+
+        public ActionBarContextThemeWrapper(Context base, int themeres) {
+            super(base, themeres);
         }
     }
 }

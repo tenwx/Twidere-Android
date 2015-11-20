@@ -19,170 +19,294 @@
 
 package org.mariotaku.twidere.activity;
 
-import android.app.ActionBar;
+import android.annotation.SuppressLint;
 import android.content.res.Resources;
-import android.content.res.Resources.Theme;
+import android.os.Build;
 import android.os.Bundle;
-import android.preference.PreferenceActivity;
-import android.support.v4.app.NavUtils;
+import android.support.annotation.LayoutRes;
+import android.support.annotation.NonNull;
+import android.support.v7.app.ActionBar;
+import android.support.v7.widget.ActionMenuView;
+import android.support.v7.widget.Toolbar;
+import android.view.KeyEvent;
 import android.view.Menu;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager.LayoutParams;
+import android.widget.FrameLayout;
 
+import com.meizu.flyme.reflect.StatusBarProxy;
+
+import org.mariotaku.twidere.BuildConfig;
 import org.mariotaku.twidere.Constants;
+import org.mariotaku.twidere.R;
 import org.mariotaku.twidere.activity.iface.IThemedActivity;
-import org.mariotaku.twidere.content.res.NoAccentResources;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
+import org.mariotaku.twidere.util.ActivityTracker;
+import org.mariotaku.twidere.util.KeyboardShortcutsHandler;
+import org.mariotaku.twidere.util.StrictModeUtils;
 import org.mariotaku.twidere.util.ThemeUtils;
-import org.mariotaku.twidere.util.theme.TwidereResourceHelper;
+import org.mariotaku.twidere.util.TwidereColorUtils;
+import org.mariotaku.twidere.util.Utils;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
+import org.mariotaku.twidere.util.support.ViewSupport;
+import org.mariotaku.twidere.view.ShapedImageView.ShapeStyle;
+import org.mariotaku.twidere.view.TintedStatusFrameLayout;
 
-import static org.mariotaku.twidere.util.Utils.restartActivity;
+import javax.inject.Inject;
 
-public abstract class BasePreferenceActivity extends PreferenceActivity implements Constants,
-        IThemedActivity, TwidereResourceHelper.OnInitListener {
+public abstract class BasePreferenceActivity extends AppCompatPreferenceActivity implements Constants,
+        IThemedActivity, KeyboardShortcutsHandler.KeyboardShortcutCallback {
 
-    private TwidereResourceHelper mResourceHelper;
-    private int mCurrentThemeResource;
-    private Theme mTheme;
-    private TwidereMenuInflater mMenuInflater;
+    private TintedStatusFrameLayout mMainContent;
+    private int mCurrentThemeResource, mCurrentThemeColor, mCurrentThemeBackgroundAlpha;
+    @ShapeStyle
+    private int mProfileImageStyle;
+    private String mCurrentThemeBackgroundOption;
+    @Inject
+    protected KeyboardShortcutsHandler mKeyboardShortcutsHandler;
+    private String mCurrentThemeFontFamily;
+    @Inject
+    protected ActivityTracker mActivityTracker;
+    private int mMetaState;
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater) {
-        return false;
+    public String getCurrentThemeFontFamily() {
+        return mCurrentThemeFontFamily;
     }
 
     @Override
-    public final boolean onCreateOptionsMenu(Menu menu) {
-        return onCreateOptionsMenu(menu, getTwidereMenuInflater());
+    public int getCurrentThemeBackgroundAlpha() {
+        return mCurrentThemeBackgroundAlpha;
     }
 
     @Override
-    public TwidereMenuInflater getTwidereMenuInflater() {
-        if (mMenuInflater != null) return mMenuInflater;
-        final ActionBar actionBar = getActionBar();
-        if (actionBar != null) {
-            return mMenuInflater = new TwidereMenuInflater(actionBar.getThemedContext());
-        }
-        return mMenuInflater = new TwidereMenuInflater(this);
+    public String getCurrentThemeBackgroundOption() {
+        return mCurrentThemeBackgroundOption;
     }
 
     @Override
-    public void finish() {
-        super.finish();
-        overrideCloseAnimationIfNeeded();
+    public int getCurrentThemeColor() {
+        return mCurrentThemeColor;
     }
 
     @Override
-    public int getCurrentThemeResourceId() {
+    public final int getCurrentThemeResourceId() {
         return mCurrentThemeResource;
     }
 
     @Override
-    public Resources getDefaultResources() {
-        return super.getResources();
-    }
-
-    @Override
-    public Theme getTheme() {
-        if (mTheme == null) {
-            mTheme = getResources().newTheme();
-            mTheme.setTo(super.getTheme());
-            final int getThemeResourceId = getThemeResourceId();
-            if (getThemeResourceId != 0) {
-                mTheme.applyStyle(getThemeResourceId, true);
-            }
-        }
-        return mTheme;
-    }
-
-    @Override
     public int getThemeBackgroundAlpha() {
-        return 0;
+        return ThemeUtils.getUserThemeBackgroundAlpha(this);
     }
 
     @Override
-    public int getOverrideAccentColor() {
-        return 0;
-    }
-
-    @Override
-    public Resources getResources() {
-        if (mResourceHelper == null) {
-            mResourceHelper = new TwidereResourceHelper(getThemeResourceId(), this);
-        }
-        return mResourceHelper.getResources(this, super.getResources());
+    public String getThemeBackgroundOption() {
+        return ThemeUtils.getThemeBackgroundOption(this);
     }
 
     @Override
     public String getThemeFontFamily() {
-        return VALUE_THEME_FONT_FAMILY_REGULAR;
+        return ThemeUtils.getThemeFontFamily(this);
     }
 
     @Override
-    public int getThemeResourceId() {
-        return ThemeUtils.getSettingsThemeResource(this);
-    }
-
-    @Override
-    public boolean isDarkDrawerEnabled() {
-        return false;
-    }
-
-    @Override
-    public void navigateUpFromSameTask() {
-        NavUtils.navigateUpFromSameTask(this);
-        overrideCloseAnimationIfNeeded();
-    }
-
-    @Override
-    public void overrideCloseAnimationIfNeeded() {
-        if (shouldOverrideActivityAnimation()) {
-            ThemeUtils.overrideActivityCloseAnimation(this);
-        } else {
-            ThemeUtils.overrideNormalActivityCloseAnimation(this);
-        }
+    @ShapeStyle
+    public int getCurrentProfileImageStyle() {
+        return mProfileImageStyle;
     }
 
     @Override
     public final void restart() {
-        restartActivity(this);
+        Utils.restartActivity(this);
     }
 
     @Override
-    public boolean shouldOverrideActivityAnimation() {
-        return true;
+    public void onContentChanged() {
+        super.onContentChanged();
+        mMainContent = (TintedStatusFrameLayout) findViewById(R.id.main_content);
+        setupTintStatusBar();
     }
 
-    protected final boolean isThemeChanged() {
-        return getThemeResourceId() != mCurrentThemeResource;
+    @Override
+    public void onSupportActionModeStarted(android.support.v7.view.ActionMode mode) {
+        super.onSupportActionModeStarted(mode);
+        ThemeUtils.applySupportActionModeColor(mode, this, getCurrentThemeResourceId(),
+                getCurrentThemeColor(), getThemeBackgroundOption(), true);
+    }
+
+    @Override
+    public boolean handleKeyboardShortcutSingle(@NonNull KeyboardShortcutsHandler handler, int keyCode, @NonNull KeyEvent event, int metaState) {
+        return false;
+    }
+
+    @Override
+    public boolean handleKeyboardShortcutRepeat(@NonNull KeyboardShortcutsHandler handler, int keyCode, int repeatCount, @NonNull KeyEvent event, int metaState) {
+        return false;
     }
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
-        if (shouldOverrideActivityAnimation()) {
-            ThemeUtils.overrideActivityOpenAnimation(this);
+        if (BuildConfig.DEBUG) {
+            StrictModeUtils.detectAllVmPolicy();
+            StrictModeUtils.detectAllThreadPolicy();
         }
-        ThemeUtils.notifyStatusBarColorChanged(this, mCurrentThemeResource, 0, 0xFF);
-        setTheme(mCurrentThemeResource = getThemeResourceId());
+        setupWindow();
         super.onCreate(savedInstanceState);
-        setActionBarBackground();
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(this)).build().inject(this);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, @NonNull KeyEvent event) {
+        if (KeyEvent.isModifierKey(keyCode)) {
+            mMetaState &= ~KeyboardShortcutsHandler.getMetaStateForKeyCode(keyCode);
+        }
+        if (handleKeyboardShortcutSingle(mKeyboardShortcutsHandler, keyCode, event, mMetaState))
+            return true;
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, @NonNull KeyEvent event) {
+        if (KeyEvent.isModifierKey(keyCode)) {
+            mMetaState |= KeyboardShortcutsHandler.getMetaStateForKeyCode(keyCode);
+        }
+        if (handleKeyboardShortcutRepeat(mKeyboardShortcutsHandler, keyCode, event.getRepeatCount(), event, mMetaState))
+            return true;
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public void setContentView(@LayoutRes int layoutResID) {
+        final FrameLayout mainContent = initMainContent();
+        getLayoutInflater().inflate(layoutResID, (ViewGroup) mainContent.findViewById(R.id.settings_content), true);
+        super.setContentView(mainContent);
+    }
+
+    @Override
+    public void setContentView(View view) {
+        final FrameLayout mainContent = initMainContent();
+        final ViewGroup settingsContent = (ViewGroup) mainContent.findViewById(R.id.settings_content);
+        settingsContent.removeAllViews();
+        settingsContent.addView(view);
+        super.setContentView(mainContent);
+    }
+
+    @Override
+    public void setContentView(View view, ViewGroup.LayoutParams params) {
+        final FrameLayout mainContent = initMainContent();
+        final ViewGroup settingsContent = (ViewGroup) mainContent.findViewById(R.id.settings_content);
+        settingsContent.removeAllViews();
+        settingsContent.addView(view);
+        super.setContentView(mainContent);
+    }
+
+    @Override
+    public void addContentView(View view, ViewGroup.LayoutParams params) {
+        FrameLayout mainContent = (FrameLayout) findViewById(R.id.main_content);
+        if (mainContent == null) {
+            @SuppressLint("InflateParams")
+            final View mainLayout = getLayoutInflater().inflate(R.layout.activity_settings, null);
+            mainContent = (FrameLayout) mainLayout.findViewById(R.id.main_content);
+        }
+        final ViewGroup settingsContent = (ViewGroup) mainContent.findViewById(R.id.settings_content);
+        settingsContent.addView(view, params);
+        onContentChanged();
+    }
+
+    protected boolean isActionBarOutlineEnabled() {
+        return true;
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (isThemeChanged()) {
-            restart();
-        } else {
-            ThemeUtils.notifyStatusBarColorChanged(this, mCurrentThemeResource, 0, 0xFF);
-        }
-    }
-
-    private final void setActionBarBackground() {
-        // ThemeUtils.applyActionBarBackground(getActionBar(), this,
-        // mCurrentThemeResource);
     }
 
     @Override
-    public void onInitResources(NoAccentResources resources) {
-        ThemeUtils.initResourceInterceptors(this, resources);
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        final boolean result = super.onPrepareOptionsMenu(menu);
+        if (!shouldSetActionItemColor()) return result;
+        final View actionBarView = getWindow().findViewById(android.support.v7.appcompat.R.id.action_bar);
+        if (actionBarView instanceof Toolbar) {
+            final int themeColor = getCurrentThemeColor();
+            final int themeId = getCurrentThemeResourceId();
+            final int itemColor = ThemeUtils.getContrastForegroundColor(this, themeId, themeColor);
+            final Toolbar toolbar = (Toolbar) actionBarView;
+            final int popupColor = ThemeUtils.getThemeForegroundColor(toolbar.getContext(), toolbar.getPopupTheme());
+            ThemeUtils.wrapToolbarMenuIcon(ViewSupport.findViewByType(actionBarView, ActionMenuView.class), itemColor, popupColor);
+        }
+        return result;
     }
+
+    protected boolean shouldSetActionItemColor() {
+        return true;
+    }
+
+    private FrameLayout initMainContent() {
+        final FrameLayout mainContent = (FrameLayout) findViewById(R.id.main_content);
+        if (mainContent != null) {
+            return mainContent;
+        }
+        return ((FrameLayout) getLayoutInflater().inflate(R.layout.activity_settings, null));
+    }
+
+    @Override
+    public void setTheme(int resid) {
+        super.setTheme(mCurrentThemeResource = getThemeResourceId());
+        if (shouldApplyWindowBackground()) {
+            ThemeUtils.applyWindowBackground(this, getWindow(), mCurrentThemeResource,
+                    mCurrentThemeBackgroundOption, mCurrentThemeBackgroundAlpha);
+        }
+    }
+
+    @Override
+    protected void onApplyThemeResource(@NonNull Resources.Theme theme, int resid, boolean first) {
+        mCurrentThemeColor = getThemeColor();
+        mCurrentThemeBackgroundAlpha = getThemeBackgroundAlpha();
+        mProfileImageStyle = Utils.getProfileImageStyle(this);
+        mCurrentThemeBackgroundOption = getThemeBackgroundOption();
+        mCurrentThemeFontFamily = getThemeFontFamily();
+        super.onApplyThemeResource(theme, resid, first);
+    }
+
+    @Override
+    protected void onPostCreate(Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
+        setupActionBar();
+    }
+
+    protected boolean shouldApplyWindowBackground() {
+        return true;
+    }
+
+    private void setupActionBar() {
+        final ActionBar actionBar = getSupportActionBar();
+        if (actionBar == null) return;
+
+        final int themeColor = getCurrentThemeColor();
+        final int themeId = getCurrentThemeResourceId();
+        final String option = getThemeBackgroundOption();
+        ThemeUtils.applyActionBarBackground(actionBar, this, themeId, themeColor, option, isActionBarOutlineEnabled());
+    }
+
+    private void setupTintStatusBar() {
+        if (mMainContent == null) return;
+
+        final int alpha = ThemeUtils.isTransparentBackground(getThemeBackgroundOption()) ? getCurrentThemeBackgroundAlpha() : 0xFF;
+        final int statusBarColor = ThemeUtils.getActionBarColor(this, getCurrentThemeColor(), getCurrentThemeResourceId(), getThemeBackgroundOption());
+        mMainContent.setColor(statusBarColor, alpha);
+        StatusBarProxy.setStatusBarDarkIcon(getWindow(), TwidereColorUtils.getYIQLuminance(statusBarColor) > ThemeUtils.ACCENT_COLOR_THRESHOLD);
+
+        mMainContent.setDrawShadow(false);
+        mMainContent.setDrawColor(true);
+        mMainContent.setFactor(1);
+    }
+
+    private void setupWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            getWindow().addFlags(LayoutParams.FLAG_TRANSLUCENT_STATUS);
+        }
+    }
+
 }

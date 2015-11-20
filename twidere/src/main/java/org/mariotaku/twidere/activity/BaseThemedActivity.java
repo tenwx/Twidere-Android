@@ -19,54 +19,55 @@
 
 package org.mariotaku.twidere.activity;
 
-import android.app.ActionBar;
-import android.content.res.Resources.Theme;
+import android.app.Activity;
+import android.content.res.Resources;
 import android.os.Bundle;
-import android.support.v4.app.NavUtils;
-import android.view.Menu;
+import android.support.annotation.NonNull;
 
-import com.negusoft.holoaccent.AccentResources;
-
+import org.mariotaku.twidere.BuildConfig;
 import org.mariotaku.twidere.activity.iface.IThemedActivity;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
-import org.mariotaku.twidere.util.CompareUtils;
+import org.mariotaku.twidere.util.ActivityTracker;
+import org.mariotaku.twidere.util.KeyboardShortcutsHandler;
 import org.mariotaku.twidere.util.StrictModeUtils;
 import org.mariotaku.twidere.util.ThemeUtils;
 import org.mariotaku.twidere.util.Utils;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
+import org.mariotaku.twidere.view.ShapedImageView;
 
-import static org.mariotaku.twidere.util.Utils.restartActivity;
+import javax.inject.Inject;
 
-public abstract class BaseThemedActivity extends AccentActivity implements IThemedActivity {
+public abstract class BaseThemedActivity extends Activity implements IThemedActivity {
 
-    private int mCurrentThemeResource, mCurrentThemeColor, mCurrentThemeBackgroundAlpha;
+    private int mCurrentThemeResource;
+    private int mCurrentThemeColor;
+    private int mCurrentThemeBackgroundAlpha;
     private String mCurrentThemeFontFamily;
-    private Theme mTheme;
-    private TwidereMenuInflater mMenuInflater;
+    private String mCurrentThemeBackgroundOption;
+    private int mProfileImageStyle;
+    @Inject
+    protected ActivityTracker mActivityTracker;
+    @Inject
+    protected KeyboardShortcutsHandler mKeyboardShortcutHandler;
 
     @Override
-    public void finish() {
-        super.finish();
-        overrideCloseAnimationIfNeeded();
+    public String getCurrentThemeFontFamily() {
+        return mCurrentThemeFontFamily;
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater) {
-        return false;
+    public int getCurrentThemeBackgroundAlpha() {
+        return mCurrentThemeBackgroundAlpha;
     }
 
     @Override
-    public final boolean onCreateOptionsMenu(Menu menu) {
-        return onCreateOptionsMenu(menu, getTwidereMenuInflater());
+    public String getCurrentThemeBackgroundOption() {
+        return mCurrentThemeBackgroundOption;
     }
 
     @Override
-    public TwidereMenuInflater getTwidereMenuInflater() {
-        if (mMenuInflater != null) return mMenuInflater;
-        final ActionBar actionBar = getActionBar();
-        if (actionBar != null) {
-            return mMenuInflater = new TwidereMenuInflater(actionBar.getThemedContext());
-        }
-        return mMenuInflater = new TwidereMenuInflater(this);
+    public int getCurrentThemeColor() {
+        return mCurrentThemeColor;
     }
 
     @Override
@@ -75,25 +76,12 @@ public abstract class BaseThemedActivity extends AccentActivity implements IThem
     }
 
     @Override
-    public Theme getTheme() {
-        if (mTheme == null) {
-            mTheme = getResources().newTheme();
-            mTheme.setTo(super.getTheme());
-            final int getThemeResourceId = getThemeResourceId();
-            if (getThemeResourceId != 0) {
-                mTheme.applyStyle(getThemeResourceId, true);
-            }
-        }
-        return mTheme;
-    }
-
-    @Override
     public int getThemeBackgroundAlpha() {
-        return ThemeUtils.isTransparentBackground(this) ? ThemeUtils.getUserThemeBackgroundAlpha(this) : 0xff;
+        return ThemeUtils.getUserThemeBackgroundAlpha(this);
     }
 
     @Override
-    public abstract int getOverrideAccentColor();
+    public abstract int getThemeColor();
 
     @Override
     public String getThemeFontFamily() {
@@ -104,88 +92,53 @@ public abstract class BaseThemedActivity extends AccentActivity implements IThem
     public abstract int getThemeResourceId();
 
     @Override
-    public boolean isDarkDrawerEnabled() {
-        return false;
-    }
-
-    @Override
-    public void navigateUpFromSameTask() {
-        NavUtils.navigateUpFromSameTask(this);
-        overrideCloseAnimationIfNeeded();
-    }
-
-    @Override
-    public void overrideCloseAnimationIfNeeded() {
-        if (shouldOverrideActivityAnimation()) {
-            ThemeUtils.overrideActivityCloseAnimation(this);
-        } else {
-            ThemeUtils.overrideNormalActivityCloseAnimation(this);
-        }
+    @ShapedImageView.ShapeStyle
+    public int getCurrentProfileImageStyle() {
+        return mProfileImageStyle;
     }
 
     @Override
     public final void restart() {
-        restartActivity(this);
+        Utils.restartActivity(this);
     }
 
-    @Override
-    public boolean shouldOverrideActivityAnimation() {
-        return true;
-    }
-
-    protected final boolean isThemeChanged() {
-        return getThemeResourceId() != mCurrentThemeResource || getOverrideAccentColor() != mCurrentThemeColor
-                || !CompareUtils.objectEquals(getThemeFontFamily(), mCurrentThemeFontFamily)
-                || getThemeBackgroundAlpha() != mCurrentThemeBackgroundAlpha;
-    }
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
-        if (Utils.isDebugBuild()) {
+        if (BuildConfig.DEBUG) {
             StrictModeUtils.detectAllVmPolicy();
             StrictModeUtils.detectAllThreadPolicy();
         }
-
-        if (shouldOverrideActivityAnimation()) {
-            ThemeUtils.overrideActivityOpenAnimation(this);
-        }
-        setTheme();
         super.onCreate(savedInstanceState);
-        // AccentThemeFixer.fixActionBar(getActionBar(), this);
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(this)).build().inject(this);
         setActionBarBackground();
     }
 
+    private void setActionBarBackground() {
+    }
+
     @Override
-    protected void onResume() {
-        super.onResume();
-        if (isThemeChanged()) {
-            restart();
-        } else {
-            ThemeUtils.notifyStatusBarColorChanged(this, mCurrentThemeResource, mCurrentThemeColor,
-                    mCurrentThemeBackgroundAlpha);
+    public void setTheme(int resId) {
+        final int themeResourceId = getThemeResourceId();
+        super.setTheme(mCurrentThemeResource = themeResourceId != 0 ? themeResourceId : resId);
+        if (shouldApplyWindowBackground()) {
+            ThemeUtils.applyWindowBackground(this, getWindow(), mCurrentThemeResource,
+                    mCurrentThemeBackgroundOption, mCurrentThemeBackgroundAlpha);
         }
     }
 
-    private final void setActionBarBackground() {
-        ThemeUtils.applyActionBarBackground(getActionBar(), this, mCurrentThemeResource);
-    }
-
     @Override
-    public void onInitAccentResources(AccentResources resources) {
-        super.onInitAccentResources(resources);
-        ThemeUtils.initResourceInterceptors(this, resources);
-    }
-
-    private final void setTheme() {
-        mCurrentThemeResource = getThemeResourceId();
-        mCurrentThemeColor = getOverrideAccentColor();
+    protected void onApplyThemeResource(@NonNull Resources.Theme theme, int resId, boolean first) {
+        mCurrentThemeColor = getThemeColor();
         mCurrentThemeFontFamily = getThemeFontFamily();
         mCurrentThemeBackgroundAlpha = getThemeBackgroundAlpha();
-        ThemeUtils.notifyStatusBarColorChanged(this, mCurrentThemeResource, mCurrentThemeColor,
-                mCurrentThemeBackgroundAlpha);
-        setTheme(mCurrentThemeResource);
-        if (ThemeUtils.isTransparentBackground(mCurrentThemeResource)) {
-            getWindow().setBackgroundDrawable(ThemeUtils.getWindowBackground(this));
-        }
+        mCurrentThemeBackgroundOption = getThemeBackgroundOption();
+        mProfileImageStyle = Utils.getProfileImageStyle(this);
+        super.onApplyThemeResource(theme, resId, first);
     }
+
+    protected boolean shouldApplyWindowBackground() {
+        return true;
+    }
+
 }

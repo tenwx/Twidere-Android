@@ -22,45 +22,83 @@ package org.mariotaku.twidere.fragment.support;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Rect;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentManagerTrojan;
+import android.support.v4.view.LayoutInflaterCompat;
+import android.support.v4.view.LayoutInflaterFactory;
 import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
+import android.view.View;
+
+import com.squareup.otto.Bus;
 
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.activity.iface.IThemedActivity;
-import org.mariotaku.twidere.activity.support.BaseSupportActivity;
+import org.mariotaku.twidere.activity.support.BaseAppCompatActivity;
 import org.mariotaku.twidere.app.TwidereApplication;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
+import org.mariotaku.twidere.fragment.iface.IBaseFragment;
+import org.mariotaku.twidere.util.AsyncTaskManager;
 import org.mariotaku.twidere.util.AsyncTwitterWrapper;
+import org.mariotaku.twidere.util.MediaLoaderWrapper;
 import org.mariotaku.twidere.util.MultiSelectManager;
-import org.mariotaku.twidere.util.ThemeUtils;
+import org.mariotaku.twidere.util.NotificationManagerWrapper;
+import org.mariotaku.twidere.util.ReadStateManager;
+import org.mariotaku.twidere.util.SharedPreferencesWrapper;
+import org.mariotaku.twidere.util.ThemedLayoutInflaterFactory;
+import org.mariotaku.twidere.util.UserColorNameManager;
+import org.mariotaku.twidere.util.VideoLoader;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
 
-public class BaseSupportFragment extends Fragment implements Constants {
+import javax.inject.Inject;
 
-    private LayoutInflater mLayoutInflater;
+public class BaseSupportFragment extends Fragment implements IBaseFragment, Constants {
+
+    // Utility classes
+    @Inject
+    protected AsyncTwitterWrapper mTwitterWrapper;
+    @Inject
+    protected ReadStateManager mReadStateManager;
+    @Inject
+    protected MediaLoaderWrapper mMediaLoader;
+    @Inject
+    protected VideoLoader mVideoLoader;
+    @Inject
+    protected Bus mBus;
+    @Inject
+    protected AsyncTaskManager mAsyncTaskManager;
+    @Inject
+    protected MultiSelectManager mMultiSelectManager;
+    @Inject
+    protected UserColorNameManager mUserColorNameManager;
+    @Inject
+    protected SharedPreferencesWrapper mPreferences;
+    @Inject
+    protected NotificationManagerWrapper mNotificationManager;
 
     public BaseSupportFragment() {
 
     }
 
     @Override
-    public final void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        final FragmentActivity activity = getActivity();
-        if (activity instanceof IThemedActivity) {
-            onCreateOptionsMenu(menu, ((IThemedActivity) activity).getTwidereMenuInflater());
-        } else {
-            super.onCreateOptionsMenu(menu, inflater);
-        }
+    public final void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        onBaseViewCreated(view, savedInstanceState);
+        requestFitSystemWindows();
     }
 
-    public void onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater) {
-
+    @Override
+    public void onAttach(Context context) {
+        super.onAttach(context);
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(context)).build().inject(this);
     }
+
 
     public TwidereApplication getApplication() {
         final Activity activity = getActivity();
@@ -72,16 +110,6 @@ public class BaseSupportFragment extends Fragment implements Constants {
         final Activity activity = getActivity();
         if (activity != null) return activity.getContentResolver();
         return null;
-    }
-
-    @Override
-    public LayoutInflater getLayoutInflater(final Bundle savedInstanceState) {
-        if (mLayoutInflater != null) return mLayoutInflater;
-        return mLayoutInflater = ThemeUtils.getThemedLayoutInflaterForActionIcons(getActivity());
-    }
-
-    public MultiSelectManager getMultiSelectManager() {
-        return getApplication() != null ? getApplication().getMultiSelectManager() : null;
     }
 
     public SharedPreferences getSharedPreferences(final String name, final int mode) {
@@ -96,14 +124,11 @@ public class BaseSupportFragment extends Fragment implements Constants {
         return null;
     }
 
-    public AsyncTwitterWrapper getTwitterWrapper() {
-        return getApplication() != null ? getApplication().getTwitterWrapper() : null;
-    }
 
     public void invalidateOptionsMenu() {
-        final Activity activity = getActivity();
+        final FragmentActivity activity = getActivity();
         if (activity == null) return;
-        activity.invalidateOptionsMenu();
+        activity.supportInvalidateOptionsMenu();
     }
 
     public void registerReceiver(final BroadcastReceiver receiver, final IntentFilter filter) {
@@ -114,8 +139,8 @@ public class BaseSupportFragment extends Fragment implements Constants {
 
     public void setProgressBarIndeterminateVisibility(final boolean visible) {
         final Activity activity = getActivity();
-        if (activity instanceof BaseSupportActivity) {
-            ((BaseSupportActivity) activity).setProgressBarIndeterminateVisibility(visible);
+        if (activity instanceof BaseAppCompatActivity) {
+            activity.setProgressBarIndeterminateVisibility(visible);
         }
     }
 
@@ -123,5 +148,63 @@ public class BaseSupportFragment extends Fragment implements Constants {
         final Activity activity = getActivity();
         if (activity == null) return;
         activity.unregisterReceiver(receiver);
+    }
+
+    @Override
+    public Bundle getExtraConfiguration() {
+        return null;
+    }
+
+    @Override
+    public int getTabPosition() {
+        final Bundle args = getArguments();
+        return args != null ? args.getInt(EXTRA_TAB_POSITION, -1) : -1;
+    }
+
+    @Override
+    public void requestFitSystemWindows() {
+        final Activity activity = getActivity();
+        final Fragment parentFragment = getParentFragment();
+        final SystemWindowsInsetsCallback callback;
+        if (parentFragment instanceof SystemWindowsInsetsCallback) {
+            callback = (SystemWindowsInsetsCallback) parentFragment;
+        } else if (activity instanceof SystemWindowsInsetsCallback) {
+            callback = (SystemWindowsInsetsCallback) activity;
+        } else {
+            return;
+        }
+        final Rect insets = new Rect();
+        if (callback.getSystemWindowsInsets(insets)) {
+            fitSystemWindows(insets);
+        }
+    }
+
+    @Override
+    public void onBaseViewCreated(View view, Bundle savedInstanceState) {
+
+    }
+
+    @Override
+    public LayoutInflater getLayoutInflater(Bundle savedInstanceState) {
+        final FragmentActivity activity = getActivity();
+        if (!(activity instanceof IThemedActivity)) {
+            return super.getLayoutInflater(savedInstanceState);
+        }
+        final LayoutInflater inflater = activity.getLayoutInflater().cloneInContext(getThemedContext());
+        getChildFragmentManager(); // Init if needed; use raw implementation below.
+        final LayoutInflaterFactory delegate = FragmentManagerTrojan.getLayoutInflaterFactory(getChildFragmentManager());
+        LayoutInflaterCompat.setFactory(inflater, new ThemedLayoutInflaterFactory((IThemedActivity) activity, delegate));
+        return inflater;
+    }
+
+    public Context getThemedContext() {
+        return getActivity();
+    }
+
+    protected void fitSystemWindows(Rect insets) {
+        final View view = getView();
+        if (view != null) {
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+        }
     }
 }

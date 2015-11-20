@@ -19,147 +19,113 @@
 
 package org.mariotaku.twidere.preference;
 
+import android.app.AlertDialog.Builder;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.graphics.Color;
-import android.preference.Preference;
+import android.os.Bundle;
+import android.preference.DialogPreference;
+import android.support.annotation.NonNull;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ImageView;
 
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.dialog.ColorPickerDialog;
-import org.mariotaku.twidere.view.ColorPickerView;
+import org.mariotaku.twidere.util.TwidereColorUtils;
 
-public class ColorPickerPreference extends Preference implements DialogInterface.OnClickListener, Constants {
+import me.uucky.colorpicker.ColorPickerDialog;
 
-	private View mView;
-	protected int mDefaultValue = Color.WHITE;
-	private boolean mAlphaSliderEnabled = false;
+public class ColorPickerPreference extends DialogPreference implements DialogInterface.OnClickListener, Constants {
 
-	private static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
-	private static final String ATTR_DEFAULTVALUE = "defaultValue";
-	private static final String ATTR_ALPHASLIDER = "alphaSlider";
+    private int mDefaultValue = Color.WHITE;
+    private boolean mAlphaSliderEnabled = false;
 
-	private final Resources mResources;
+    private ColorPickerDialog.Controller mController;
 
-	private ColorPickerDialog mDialog;
+    public ColorPickerPreference(final Context context, final AttributeSet attrs) {
+        this(context, attrs, android.R.attr.preferenceStyle);
+    }
 
-	public ColorPickerPreference(final Context context, final AttributeSet attrs) {
-		this(context, attrs, android.R.attr.preferenceStyle);
-	}
+    public ColorPickerPreference(final Context context, final AttributeSet attrs, final int defStyle) {
+        super(context, attrs, defStyle);
+        setWidgetLayoutResource(R.layout.preference_widget_color_picker);
 
-	public ColorPickerPreference(final Context context, final AttributeSet attrs, final int defStyle) {
-		super(context, attrs, defStyle);
-		mResources = context.getResources();
-		init(context, attrs);
-	}
+        final TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.ColorPickerPreferences);
+        mAlphaSliderEnabled = a.getBoolean(R.styleable.ColorPickerPreferences_alphaSlider, false);
+        setDefaultValue(a.getColor(R.styleable.ColorPickerPreferences_defaultColor, 0));
+        a.recycle();
+    }
 
-	public void onActivityDestroy() {
-		if (mDialog == null || !mDialog.isShowing()) return;
-		mDialog.dismiss();
-	}
+    @Override
+    protected void onBindView(@NonNull final View view) {
+        super.onBindView(view);
+        final ImageView imageView = (ImageView) view.findViewById(R.id.color);
+        imageView.setImageBitmap(TwidereColorUtils.getColorPreviewBitmap(getContext(), getValue(), false));
+    }
 
-	@Override
-	public void onClick(final DialogInterface dialog, final int which) {
-		switch (which) {
-			case DialogInterface.BUTTON_POSITIVE:
-				if (mDialog == null) return;
-				final int color = mDialog.getColor();
-				if (isPersistent()) {
-					persistInt(color);
-				}
-				setPreviewColor();
-				final OnPreferenceChangeListener listener = getOnPreferenceChangeListener();
-				if (listener != null) {
-					listener.onPreferenceChange(this, color);
-				}
-				break;
-		}
-	}
+    @Override
+    public void setDefaultValue(final Object value) {
+        if (!(value instanceof Integer)) return;
+        mDefaultValue = (Integer) value;
+    }
 
-	@Override
-	public void setDefaultValue(final Object value) {
-		if (!(value instanceof Integer)) return;
-		mDefaultValue = (Integer) value;
-	}
+    @Override
+    protected void onSetInitialValue(final boolean restoreValue, final Object defaultValue) {
+        if (isPersistent() && defaultValue instanceof Integer) {
+            persistInt(restoreValue ? getValue() : (Integer) defaultValue);
+        }
+    }
 
-	protected void init(final Context context, final AttributeSet attrs) {
-		if (attrs != null) {
-			final String defaultValue = attrs.getAttributeValue(ANDROID_NS, ATTR_DEFAULTVALUE);
-			if (defaultValue != null && defaultValue.startsWith("#")) {
-				try {
-					setDefaultValue(Color.parseColor(defaultValue));
-				} catch (final IllegalArgumentException e) {
-					Log.e("ColorPickerPreference", "Wrong color: " + defaultValue);
-					setDefaultValue(Color.WHITE);
-				}
-			} else {
-				final int colorResourceId = attrs.getAttributeResourceValue(ANDROID_NS, ATTR_DEFAULTVALUE, 0);
-				if (colorResourceId != 0) {
-					setDefaultValue(context.getResources().getColor(colorResourceId));
-				}
-			}
-			mAlphaSliderEnabled = attrs.getAttributeBooleanValue(null, ATTR_ALPHASLIDER, false);
-		}
-	}
+    @Override
+    protected void onPrepareDialogBuilder(Builder builder) {
+        mController = ColorPickerDialog.Controller.applyToDialogBuilder(builder);
+        mController.setAlphaEnabled(mAlphaSliderEnabled);
+        final Resources res = builder.getContext().getResources();
+        for (int presetColor : PRESET_COLORS) {
+            mController.addColor(res.getColor(presetColor));
+        }
+        mController.setInitialColor(getValue());
+        builder.setPositiveButton(res.getString(android.R.string.ok), this);
+        builder.setNegativeButton(res.getString(android.R.string.cancel), this);
+    }
 
-	@Override
-	protected void onBindView(final View view) {
-		super.onBindView(view);
-		mView = view;
-		setPreviewColor();
-	}
+    @Override
+    protected void showDialog(Bundle state) {
+        super.showDialog(state);
+        final Dialog dialog = getDialog();
+        if (dialog != null && mController != null) {
+            dialog.setOnShowListener(mController);
+        }
+    }
 
-	@Override
-	protected void onClick() {
-		if (mDialog != null && mDialog.isShowing()) return;
-		mDialog = new ColorPickerDialog(getContext(), getValue(), mAlphaSliderEnabled);
-		mDialog.setButton(DialogInterface.BUTTON_POSITIVE, mResources.getString(android.R.string.ok), this);
-		mDialog.setButton(DialogInterface.BUTTON_NEGATIVE, mResources.getString(android.R.string.cancel), this);
-		mDialog.show();
-		return;
-	}
+    @Override
+    public void onClick(final DialogInterface dialog, final int which) {
+        switch (which) {
+            case DialogInterface.BUTTON_POSITIVE:
+                if (mController == null) return;
+                final int color = mController.getColor();
+                if (isPersistent()) {
+                    persistInt(color);
+                }
+                final OnPreferenceChangeListener listener = getOnPreferenceChangeListener();
+                if (listener != null) {
+                    listener.onPreferenceChange(this, color);
+                }
+                break;
+        }
+    }
 
-	@Override
-	protected void onSetInitialValue(final boolean restoreValue, final Object defaultValue) {
-		if (isPersistent() && defaultValue instanceof Integer) {
-			persistInt(restoreValue ? getValue() : (Integer) defaultValue);
-		}
-	}
-
-	private int getValue() {
-		try {
-			if (isPersistent()) return getPersistedInt(mDefaultValue);
-		} catch (final ClassCastException e) {
-			e.printStackTrace();
-		}
-		return mDefaultValue;
-	}
-
-	private void setPreviewColor() {
-		if (mView == null) return;
-		final View widgetFrameView = mView.findViewById(android.R.id.widget_frame);
-		if (!(widgetFrameView instanceof ViewGroup)) return;
-		final ViewGroup widgetFrame = (ViewGroup) widgetFrameView;
-		widgetFrame.setVisibility(View.VISIBLE);
-		// remove preview image that is already created
-		widgetFrame.setAlpha(isEnabled() ? 1 : 0.25f);
-		final View foundView = widgetFrame.findViewById(R.id.color);
-		final ImageView imageView;
-		if (foundView instanceof ImageView) {
-			imageView = (ImageView) foundView;
-		} else {
-			imageView = new ImageView(getContext());
-			widgetFrame.removeAllViews();
-			imageView.setId(R.id.color);
-			widgetFrame.addView(imageView);
-		}
-		imageView.setImageBitmap(ColorPickerView.getColorPreviewBitmap(getContext(), getValue()));
-	}
+    private int getValue() {
+        try {
+            if (isPersistent()) return getPersistedInt(mDefaultValue);
+        } catch (final ClassCastException e) {
+            e.printStackTrace();
+        }
+        return mDefaultValue;
+    }
 
 }

@@ -20,72 +20,81 @@
 package org.mariotaku.twidere.loader.support;
 
 import android.content.Context;
+import android.support.annotation.Nullable;
 import android.support.v4.content.AsyncTaskLoader;
 
 import org.mariotaku.twidere.Constants;
+import org.mariotaku.twidere.loader.iface.IExtendedLoader;
 import org.mariotaku.twidere.model.ParcelableStatus;
 import org.mariotaku.twidere.util.collection.NoDuplicatesArrayList;
 
 import java.util.List;
 
-public abstract class ParcelableStatusesLoader extends AsyncTaskLoader<List<ParcelableStatus>> implements Constants {
+public abstract class ParcelableStatusesLoader extends AsyncTaskLoader<List<ParcelableStatus>>
+        implements Constants, IExtendedLoader {
 
-	private final List<ParcelableStatus> mData = new NoDuplicatesArrayList<ParcelableStatus>();
-	private final boolean mFirstLoad;
-	private final int mTabPosition;
+    private final List<ParcelableStatus> mData = new NoDuplicatesArrayList<>();
+    private final boolean mFirstLoad;
+    private final int mTabPosition;
+    private boolean mFromUser;
 
-	private Long mLastViewedId;
+    public ParcelableStatusesLoader(final Context context, final List<ParcelableStatus> data,
+                                    final int tabPosition, final boolean fromUser) {
+        super(context);
+        mFirstLoad = data == null;
+        if (data != null) {
+            mData.addAll(data);
+        }
+        mTabPosition = tabPosition;
+        mFromUser = fromUser;
+    }
 
-	public ParcelableStatusesLoader(final Context context, final List<ParcelableStatus> data, final int tab_position) {
-		super(context);
-		mFirstLoad = data == null;
-		if (data != null) {
-			mData.addAll(data);
-		}
-		mTabPosition = tab_position;
-	}
+    @Override
+    public boolean isFromUser() {
+        return mFromUser;
+    }
 
-	public Long getLastViewedId() {
-		return mLastViewedId;
-	}
+    @Override
+    public void setFromUser(boolean fromUser) {
+        mFromUser = fromUser;
+    }
 
-	protected boolean containsStatus(final long status_id) {
-		for (final ParcelableStatus status : mData) {
-			if (status.id == status_id) return true;
-		}
-		return false;
-	}
+    protected boolean containsStatus(final long statusId) {
+        for (final ParcelableStatus status : mData) {
+            if (status.id == statusId) return true;
+        }
+        return false;
+    }
 
-	protected boolean deleteStatus(final List<ParcelableStatus> statuses, final long status_id) {
-		if (statuses == null || statuses.isEmpty()) return false;
-		boolean result = false;
-		for (final ParcelableStatus status : statuses.toArray(new ParcelableStatus[statuses.size()])) {
-			if (status.id == status_id) {
-				result |= statuses.remove(status);
-			}
-		}
-		return result;
-	}
+    protected boolean deleteStatus(final List<ParcelableStatus> statuses, final long status_id) {
+        if (statuses == null || statuses.isEmpty()) return false;
+        boolean result = false;
+        for (int i = statuses.size() - 1; i >= 0; i--) {
+            if (statuses.get(i).id == status_id) {
+                statuses.remove(i);
+                result = true;
+            }
+        }
+        return result;
+    }
 
-	protected List<ParcelableStatus> getData() {
-		return mData;
-	}
+    @Nullable
+    protected List<ParcelableStatus> getData() {
+        return mData;
+    }
 
-	protected int getTabPosition() {
-		return mTabPosition;
-	}
+    protected int getTabPosition() {
+        return mTabPosition;
+    }
 
-	protected boolean isFirstLoad() {
-		return mFirstLoad;
-	}
+    protected boolean isFirstLoad() {
+        return mFirstLoad;
+    }
 
-	@Override
-	protected void onStartLoading() {
-		forceLoad();
-	}
+    @Override
+    protected void onStartLoading() {
+        forceLoad();
+    }
 
-	protected void setLastViewedId(final Long id) {
-		mLastViewedId = id;
-	}
 
 }

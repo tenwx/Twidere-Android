@@ -23,13 +23,14 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 
+import org.mariotaku.twidere.BuildConfig;
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.activity.support.HomeActivity;
 import org.mariotaku.twidere.util.StrictModeUtils;
 import org.mariotaku.twidere.util.ThemeUtils;
-import org.mariotaku.twidere.util.Utils;
 
 public class MainActivity extends Activity implements Constants {
+
     @Override
     public void finish() {
         super.finish();
@@ -38,26 +39,17 @@ public class MainActivity extends Activity implements Constants {
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
-        if (Utils.isDebugBuild()) {
+        if (BuildConfig.DEBUG) {
             StrictModeUtils.detectAllVmPolicy();
             StrictModeUtils.detectAllThreadPolicy();
         }
-//        ThemeUtils.overrideActivityOpenAnimation(this);
+        ThemeUtils.overrideActivityOpenAnimation(this);
         super.onCreate(savedInstanceState);
+        setVisible(true);
         final Intent intent = new Intent(this, HomeActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         startActivity(intent);
         finish();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        final int themeResource = ThemeUtils.getThemeResource(this);
-        final int accentColor = ThemeUtils.isColoredActionBar(themeResource) ? ThemeUtils.getUserThemeColor(this) : 0;
-        final int backgroundAlpha = ThemeUtils.isTransparentBackground(themeResource) ? ThemeUtils
-                .getUserThemeBackgroundAlpha(this) : 0xFF;
-        ThemeUtils.notifyStatusBarColorChanged(this, themeResource, accentColor, backgroundAlpha);
     }
 
 }

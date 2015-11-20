@@ -19,80 +19,48 @@
 
 package org.mariotaku.twidere.util;
 
-import static org.mariotaku.twidere.util.ServiceUtils.bindToService;
-
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.os.RemoteException;
 
-import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.IStatusShortener;
 import org.mariotaku.twidere.model.ParcelableStatusUpdate;
 import org.mariotaku.twidere.model.StatusShortenResult;
 
-public final class StatusShortenerInterface implements Constants, IStatusShortener {
+public final class StatusShortenerInterface extends AbsServiceInterface<IStatusShortener> implements IStatusShortener {
 
-	private IStatusShortener mShortener;
+    protected StatusShortenerInterface(Context context, String shortenerName) {
+        super(context, shortenerName);
+    }
 
-	private final ServiceConnection mConntecion = new ServiceConnection() {
+    @Override
+    protected IStatusShortener onServiceConnected(ComponentName service, IBinder obj) {
+        return IStatusShortener.Stub.asInterface(obj);
+    }
 
-		@Override
-		public void onServiceConnected(final ComponentName service, final IBinder obj) {
-			mShortener = IStatusShortener.Stub.asInterface(obj);
-		}
+    @Override
+    public StatusShortenResult shorten(final ParcelableStatusUpdate status, final String overrideStatusText)
+            throws RemoteException {
+        final IStatusShortener iface = getInterface();
+        if (iface == null) return null;
+        try {
+            return iface.shorten(status, overrideStatusText);
+        } catch (final RemoteException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 
-		@Override
-		public void onServiceDisconnected(final ComponentName service) {
-			mShortener = null;
-		}
-	};
-
-	private StatusShortenerInterface(final Context context, final String shortenerName) {
-		final Intent intent = new Intent(INTENT_ACTION_EXTENSION_SHORTEN_STATUS);
-		final ComponentName component = ComponentName.unflattenFromString(shortenerName);
-		intent.setComponent(component);
-		bindToService(context, intent, mConntecion);
-	}
-
-	@Override
-	public IBinder asBinder() {
-		// Useless here
-		return mShortener.asBinder();
-	}
-
-	@Override
-	public StatusShortenResult shorten(final ParcelableStatusUpdate status, final String overrideStatusText)
-			throws RemoteException {
-		if (mShortener == null) return null;
-		try {
-			return mShortener.shorten(status, overrideStatusText);
-		} catch (final RemoteException e) {
-			e.printStackTrace();
-		}
-		return null;
-	}
-
-	public void waitForService() {
-		while (mShortener == null) {
-			try {
-				Thread.sleep(100L);
-			} catch (final InterruptedException e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
-	public static StatusShortenerInterface getInstance(final Application application, final String shortener_name) {
-		if (shortener_name == null) return null;
-		final Intent intent = new Intent(INTENT_ACTION_EXTENSION_SHORTEN_STATUS);
-		final ComponentName component = ComponentName.unflattenFromString(shortener_name);
-		intent.setComponent(component);
-		if (application.getPackageManager().queryIntentServices(intent, 0).size() != 1) return null;
-		return new StatusShortenerInterface(application, shortener_name);
-	}
+    public static StatusShortenerInterface getInstance(final Application application, final String shortener_name) {
+        if (shortener_name == null) return null;
+        final Intent intent = new Intent(INTENT_ACTION_EXTENSION_SHORTEN_STATUS);
+        final ComponentName component = ComponentName.unflattenFromString(shortener_name);
+        intent.setComponent(component);
+        if (application.getPackageManager().queryIntentServices(intent, 0).size() != 1) return null;
+        return new StatusShortenerInterface(application, shortener_name);
+    }
 
 }

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+                  xmlns:app="http://schemas.android.com/apk/res-auto"
+                  android:title="@string/cards">
+
+    <PreferenceCategory
+        android:key="cat_card_preview"
+        android:order="11"
+        android:title="@string/preview">
+        <org.mariotaku.twidere.preference.CardPreviewPreference android:key="card_preview"/>
+    </PreferenceCategory>
+
+    <org.mariotaku.twidere.preference.SeekBarDialogPreference
+        android:defaultValue="@integer/default_text_size"
+        android:key="text_size_int"
+        android:order="22"
+        android:summary="@string/text_size_summary"
+        android:title="@string/size"
+        app:max="24"
+        app:min="12"
+        app:progressTextSuffix="sp">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.SeekBarDialogPreference>
+
+    <org.mariotaku.twidere.preference.AutoFixSwitchPreference
+        android:defaultValue="true"
+        android:key="display_profile_image"
+        android:order="23"
+        android:title="@string/profile_image">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.AutoFixSwitchPreference>
+    <org.mariotaku.twidere.preference.AutoFixSwitchPreference
+        android:defaultValue="false"
+        android:key="media_preview"
+        android:order="25"
+        android:title="@string/media_preview">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.AutoFixSwitchPreference>
+
+    <org.mariotaku.twidere.preference.LinkHighlightPreference
+        android:defaultValue="none"
+        android:key="link_highlight_option"
+        android:order="27"
+        android:title="@string/link_highlight_option">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.LinkHighlightPreference>
+
+    <org.mariotaku.twidere.preference.AutoFixSwitchPreference
+        android:defaultValue="false"
+        android:key="compact_cards"
+        android:order="32"
+        android:summary="@string/compact_cards_summary"
+        android:title="@string/compact_cards">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.AutoFixSwitchPreference>
+    <org.mariotaku.twidere.preference.AutoFixSwitchPreference
+        android:defaultValue="false"
+        android:key="hide_card_actions"
+        android:order="33"
+        android:title="@string/hide_card_actions">
+        <extra
+            android:name="notify_change"
+            android:value="true"/>
+    </org.mariotaku.twidere.preference.AutoFixSwitchPreference>
+
+</PreferenceScreen>

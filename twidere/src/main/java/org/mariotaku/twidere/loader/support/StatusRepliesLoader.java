@@ -19,54 +19,56 @@
 
 package org.mariotaku.twidere.loader.support;
 
-import static org.mariotaku.twidere.util.Utils.isOfficialTwitterInstance;
-import static org.mariotaku.twidere.util.Utils.shouldForceUsingPrivateAPIs;
-
 import android.content.Context;
+import android.support.annotation.NonNull;
 
 import org.mariotaku.twidere.model.ParcelableStatus;
-
-import twitter4j.Paging;
-import twitter4j.Status;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.model.Status;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
+
+import static org.mariotaku.twidere.util.Utils.isOfficialTwitterInstance;
+import static org.mariotaku.twidere.util.Utils.shouldForceUsingPrivateAPIs;
+
 public class StatusRepliesLoader extends UserMentionsLoader {
 
-	private final long mInReplyToStatusId;
+    private final long mInReplyToStatusId;
 
-	public StatusRepliesLoader(final Context context, final long accountId, final String screenName,
-			final long statusId, final long maxId, final long sinceId, final List<ParcelableStatus> data,
-			final String[] savedStatusesArgs, final int tabPosition) {
-		super(context, accountId, screenName, maxId, sinceId, data, savedStatusesArgs, tabPosition);
-		mInReplyToStatusId = statusId;
-	}
+    public StatusRepliesLoader(final Context context, final long accountId, final String screenName,
+                               final long statusId, final long maxId, final long sinceId, final List<ParcelableStatus> data,
+                               final String[] savedStatusesArgs, final int tabPosition, boolean fromUser,
+                               boolean twitterOptimizedSearches) {
+        super(context, accountId, screenName, maxId, sinceId, data, savedStatusesArgs, tabPosition,
+                fromUser, false, twitterOptimizedSearches);
+        mInReplyToStatusId = statusId;
+    }
 
-	@Override
-	public List<Status> getStatuses(final Twitter twitter, final Paging paging) throws TwitterException {
-		final Context context = getContext();
-		if (shouldForceUsingPrivateAPIs(context) || isOfficialTwitterInstance(context, twitter)) {
-			final List<Status> statuses = twitter.showConversation(mInReplyToStatusId, paging);
-			final List<Status> result = new ArrayList<Status>();
-			for (final Status status : statuses) {
-				if (status.getId() > mInReplyToStatusId) {
-					result.add(status);
-				}
-			}
-			return result;
-		} else {
-			final List<Status> statuses = super.getStatuses(twitter, paging);
-			final List<Status> result = new ArrayList<Status>();
-			for (final Status status : statuses) {
-				if (status.getInReplyToStatusId() == mInReplyToStatusId) {
-					result.add(status);
-				}
-			}
-			return result;
-		}
-	}
+    @NonNull
+    @Override
+    public List<Status> getStatuses(@NonNull final Twitter twitter, final Paging paging) throws TwitterException {
+        final Context context = getContext();
+        final List<Status> result = new ArrayList<>();
+        if (shouldForceUsingPrivateAPIs(context) || isOfficialTwitterInstance(context, twitter)) {
+            final List<Status> statuses = twitter.showConversation(mInReplyToStatusId, paging);
+            for (final Status status : statuses) {
+                if (status.getId() > mInReplyToStatusId) {
+                    result.add(status);
+                }
+            }
+        } else {
+            final List<Status> statuses = super.getStatuses(twitter, paging);
+            for (final Status status : statuses) {
+                if (status.getInReplyToStatusId() == mInReplyToStatusId) {
+                    result.add(status);
+                }
+            }
+        }
+        return result;
+    }
 
 }

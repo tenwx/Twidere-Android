@@ -19,13 +19,15 @@
 
 package org.mariotaku.twidere.fragment;
 
+import android.support.annotation.Nullable;
+
 import org.mariotaku.twidere.R;
 
 public class AccountRefreshSettingsFragment extends BaseAccountPreferenceFragment {
 
 	@Override
 	protected int getPreferencesResource() {
-		return R.xml.settings_account_refresh;
+		return R.xml.preferences_account_refresh;
 	}
 
 	@Override
@@ -34,7 +36,8 @@ public class AccountRefreshSettingsFragment extends BaseAccountPreferenceFragmen
 	}
 
 	@Override
+	@Nullable
 	protected String getSwitchPreferenceKey() {
-		return KEY_AUTO_REFRESH;
+		return null;
 	}
 }

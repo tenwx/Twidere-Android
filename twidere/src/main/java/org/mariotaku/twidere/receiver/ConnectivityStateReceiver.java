@@ -19,29 +19,58 @@
 
 package org.mariotaku.twidere.receiver;
 
-import static org.mariotaku.twidere.util.Utils.startProfilingServiceIfNeeded;
-import static org.mariotaku.twidere.util.Utils.startRefreshServiceIfNeeded;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
+import android.os.AsyncTask;
 import android.util.Log;
 
+import org.mariotaku.twidere.BuildConfig;
 import org.mariotaku.twidere.Constants;
 import org.mariotaku.twidere.util.Utils;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.net.NetworkUsageUtils;
+
+import edu.tsinghua.hotmobi.HotMobiLogger;
+import edu.tsinghua.hotmobi.UploadLogsTask;
+import edu.tsinghua.hotmobi.model.NetworkEvent;
+import edu.tsinghua.spice.Utilies.SpiceProfilingUtil;
+
+import static org.mariotaku.twidere.util.Utils.startRefreshServiceIfNeeded;
 
 public class ConnectivityStateReceiver extends BroadcastReceiver implements Constants {
 
-	private static final String RECEIVER_LOGTAG = LOGTAG + "." + "ConnectivityStateReceiver";
+    private static final String RECEIVER_LOGTAG = LOGTAG + "." + "Connectivity";
 
-	@Override
-	public void onReceive(final Context context, final Intent intent) {
-		if (Utils.isDebugBuild()) {
-			Log.d(RECEIVER_LOGTAG, String.format("Received Broadcast %s", intent));
-		}
-		if (!ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction())) return;
-		startProfilingServiceIfNeeded(context);
-		startRefreshServiceIfNeeded(context);
-	}
+    @Override
+    public void onReceive(final Context context, final Intent intent) {
+        if (BuildConfig.DEBUG) {
+            Log.d(RECEIVER_LOGTAG, String.format("Received Broadcast %s", intent));
+        }
+        if (!ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction())) return;
+        ApplicationModule.get(context).reloadConnectivitySettings();
+        startRefreshServiceIfNeeded(context);
+        final SharedPreferences prefs = context.getSharedPreferences(SHARED_PREFERENCES_NAME,
+                Context.MODE_PRIVATE);
+        if (prefs.getBoolean(KEY_USAGE_STATISTICS, false) && prefs.getBoolean(KEY_SETTINGS_WIZARD_COMPLETED, false)) {
+            // BEGIN HotMobi
+            final NetworkEvent event = NetworkEvent.create(context);
+            HotMobiLogger.getInstance(context).log(event);
+            // END HotMobi
+        }
+        final int networkType = Utils.getActiveNetworkType(context.getApplicationContext());
+        NetworkUsageUtils.setNetworkType(networkType);
+        final boolean isWifi = networkType == ConnectivityManager.TYPE_WIFI;
+        final boolean isCharging = SpiceProfilingUtil.isCharging(context.getApplicationContext());
+        if (isWifi && isCharging) {
+            final long currentTime = System.currentTimeMillis();
+            final long lastSuccessfulTime = HotMobiLogger.getLastUploadTime(context);
+            if ((currentTime - lastSuccessfulTime) > HotMobiLogger.UPLOAD_INTERVAL_MILLIS) {
+                AsyncTask.execute(new UploadLogsTask(context.getApplicationContext()));
+            }
+        }
+
+    }
 }

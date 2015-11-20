@@ -19,89 +19,108 @@
 
 package org.mariotaku.twidere.util;
 
-import static org.mariotaku.twidere.util.Utils.openImage;
+import android.content.ActivityNotFoundException;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+
+import org.mariotaku.twidere.Constants;
+import org.mariotaku.twidere.model.ParcelableMedia;
+import org.mariotaku.twidere.util.TwidereLinkify.OnLinkClickListener;
+
+import edu.tsinghua.hotmobi.HotMobiLogger;
+import edu.tsinghua.hotmobi.model.LinkEvent;
+
 import static org.mariotaku.twidere.util.Utils.openStatus;
 import static org.mariotaku.twidere.util.Utils.openTweetSearch;
 import static org.mariotaku.twidere.util.Utils.openUserListDetails;
 import static org.mariotaku.twidere.util.Utils.openUserProfile;
 
-import android.app.Activity;
-import android.content.ActivityNotFoundException;
-import android.content.Context;
-import android.content.Intent;
-import android.net.Uri;
-
-import edu.ucdavis.earlybird.ProfilingUtil;
-
-import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.util.TwidereLinkify.OnLinkClickListener;
-
 public class OnLinkClickHandler implements OnLinkClickListener, Constants {
 
-	protected final Activity activity;
-	protected final MultiSelectManager manager;
+    @NonNull
+    protected final Context context;
+    @Nullable
+    protected final MultiSelectManager manager;
 
-	public OnLinkClickHandler(final Context context, final MultiSelectManager manager) {
-		activity = context instanceof Activity ? (Activity) context : null;
-		this.manager = manager;
-	}
+    public OnLinkClickHandler(@NonNull final Context context, @Nullable final MultiSelectManager manager) {
+        this.context = context;
+        this.manager = manager;
+    }
 
-	@Override
-	public void onLinkClick(final String link, final String orig, final long account_id, final int type,
-			final boolean sensitive) {
-		if (activity == null || manager.isActive()) return;
-		// UCD
-		ProfilingUtil.profile(activity, account_id, "Click, " + link + ", " + type);
+    @Override
+    public void onLinkClick(final String link, final String orig, final long accountId, long extraId, final int type,
+                            final boolean sensitive, int start, int end) {
+        if (manager != null && manager.isActive()) return;
+        if (!isPrivateData()) {
+            // BEGIN HotMobi
+            final LinkEvent event = LinkEvent.create(context, link, type);
+            HotMobiLogger.getInstance(context).log(accountId, event);
+            // END HotMobi
+        }
 
-		if (activity == null) return;
-		switch (type) {
-			case TwidereLinkify.LINK_TYPE_MENTION: {
-				openUserProfile(activity, account_id, -1, link);
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_HASHTAG: {
-				openTweetSearch(activity, account_id, link);
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_LINK: {
-				if (MediaPreviewUtils.isLinkSupported(link)) {
-					openImage(activity, account_id, link, sensitive);
-				} else {
-					openLink(link);
-				}
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_LIST: {
-				final String[] mention_list = link.split("\\/");
-				if (mention_list == null || mention_list.length != 2) {
-					break;
-				}
-				openUserListDetails(activity, account_id, -1, -1, mention_list[0], mention_list[1]);
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_CASHTAG: {
-				openTweetSearch(activity, account_id, link);
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_USER_ID: {
-				openUserProfile(activity, account_id, ParseUtils.parseLong(link), null);
-				break;
-			}
-			case TwidereLinkify.LINK_TYPE_STATUS: {
-				openStatus(activity, account_id, ParseUtils.parseLong(link));
-				break;
-			}
-		}
-	}
+        switch (type) {
+            case TwidereLinkify.LINK_TYPE_MENTION: {
+                openUserProfile(context, accountId, -1, link, null);
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_HASHTAG: {
+                openTweetSearch(context, accountId, "#" + link);
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_LINK: {
+                if (MediaPreviewUtils.isLinkSupported(link)) {
+                    openMedia(accountId, extraId, sensitive, link, start, end);
+                } else {
+                    openLink(link);
+                }
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_LIST: {
+                final String[] mentionList = link.split("/");
+                if (mentionList.length != 2) {
+                    break;
+                }
+                openUserListDetails(context, accountId, -1, -1, mentionList[0], mentionList[1]);
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_CASHTAG: {
+                openTweetSearch(context, accountId, link);
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_USER_ID: {
+                openUserProfile(context, accountId, ParseUtils.parseLong(link), null, null);
+                break;
+            }
+            case TwidereLinkify.LINK_TYPE_STATUS: {
+                openStatus(context, accountId, ParseUtils.parseLong(link));
+                break;
+            }
+        }
+    }
 
-	protected void openLink(final String link) {
-		if (activity == null || manager.isActive()) return;
-		final Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(link));
-		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-		try {
-			activity.startActivity(intent);
-		} catch (final ActivityNotFoundException e) {
-			// TODO
-		}
-	}
+    protected boolean isPrivateData() {
+        return false;
+    }
+
+    protected void openMedia(long accountId, long extraId, boolean sensitive, String link, int start, int end) {
+        final ParcelableMedia[] media = {ParcelableMedia.newImage(link, link)};
+        //TODO open media animation
+        Bundle options = null;
+        Utils.openMedia(context, accountId, sensitive, null, media, options);
+    }
+
+    protected void openLink(final String link) {
+        if (manager != null && manager.isActive()) return;
+        final Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(link));
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+        } catch (final ActivityNotFoundException e) {
+            // TODO
+        }
+    }
 }

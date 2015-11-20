@@ -19,15 +19,7 @@
 
 package org.mariotaku.twidere.activity.support;
 
-import static org.mariotaku.twidere.util.ParseUtils.parseString;
-import static org.mariotaku.twidere.util.Utils.getNonEmptyString;
-import static org.mariotaku.twidere.util.Utils.trim;
-
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -35,211 +27,195 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.RadioGroup.OnCheckedChangeListener;
-import android.widget.TextView;
+import android.widget.Toast;
 
 import org.mariotaku.twidere.R;
-import org.mariotaku.twidere.fragment.BaseDialogFragment;
-import org.mariotaku.twidere.provider.TweetStore.Accounts;
-import org.mariotaku.twidere.util.ThemeUtils;
+import org.mariotaku.twidere.model.ParcelableCredentials;
+import org.mariotaku.twidere.provider.TwidereDataStore.Accounts;
+import org.mariotaku.twidere.util.TwitterAPIFactory;
 
-import twitter4j.TwitterConstants;
+import static org.mariotaku.twidere.util.ParseUtils.parseString;
+import static org.mariotaku.twidere.util.Utils.getNonEmptyString;
+import static org.mariotaku.twidere.util.Utils.trim;
 
-public class APIEditorActivity extends BaseSupportDialogActivity implements TwitterConstants, OnCheckedChangeListener,
-		OnClickListener {
+public class APIEditorActivity extends BaseSupportDialogActivity implements OnCheckedChangeListener,
+        OnClickListener, CompoundButton.OnCheckedChangeListener {
 
-	private EditText mEditAPIUrlFormat;
-	private CheckBox mEditSameOAuthSigningUrl;
-	private EditText mEditConsumerKey, mEditConsumerSecret;
-	private RadioGroup mEditAuthType;
-	private RadioButton mButtonOAuth, mButtonxAuth, mButtonBasic, mButtonTwipOMode;
-	private TextView mAdvancedAPIConfigLabel;
-	private View mAdvancedAPIConfigContainer;
-	private View mAdvancedAPIConfigView;
-	private Button mSaveButton;
+    private EditText mEditAPIUrlFormat;
+    private CheckBox mEditSameOAuthSigningUrl, mEditNoVersionSuffix;
+    private EditText mEditConsumerKey, mEditConsumerSecret;
+    private RadioGroup mEditAuthType;
+    private RadioButton mButtonOAuth, mButtonXAuth, mButtonBasic, mButtonTWIPOMode;
+    private Button mSaveButton;
+    private View mAPIFormatHelpButton;
+    private boolean mEditNoVersionSuffixChanged;
 
-	@Override
-	public void onCheckedChanged(final RadioGroup group, final int checkedId) {
-		final int authType = getCheckedAuthType(checkedId);
-		final boolean isOAuth = authType == Accounts.AUTH_TYPE_OAUTH || authType == Accounts.AUTH_TYPE_XAUTH;
-		mAdvancedAPIConfigContainer.setVisibility(isOAuth ? View.VISIBLE : View.GONE);
-	}
+    @Override
+    public void onCheckedChanged(final RadioGroup group, final int checkedId) {
+        final int authType = getCheckedAuthType(checkedId);
+        final boolean isOAuth = authType == ParcelableCredentials.AUTH_TYPE_OAUTH || authType == ParcelableCredentials.AUTH_TYPE_XAUTH;
+        mEditSameOAuthSigningUrl.setVisibility(isOAuth ? View.VISIBLE : View.GONE);
+        mEditConsumerKey.setVisibility(isOAuth ? View.VISIBLE : View.GONE);
+        mEditConsumerSecret.setVisibility(isOAuth ? View.VISIBLE : View.GONE);
+        if (!mEditNoVersionSuffixChanged) {
+            mEditNoVersionSuffix.setChecked(authType == ParcelableCredentials.AUTH_TYPE_TWIP_O_MODE);
+        }
+    }
 
-	@Override
-	public void onClick(final View v) {
-		switch (v.getId()) {
-			case R.id.save: {
-				if (checkUrlErrors()) return;
-				final String apiUrlFormat = parseString(mEditAPIUrlFormat.getText());
-				final int authType = getCheckedAuthType(mEditAuthType.getCheckedRadioButtonId());
-				if (authType == Accounts.AUTH_TYPE_TWIP_O_MODE && !apiUrlFormat.endsWith("/1.1/")) {
-					new TWIPNoticeDialogFragment().show(getFragmentManager(), "twip_o_mode_bug_notice");
-					return;
-				}
-				saveAndFinish();
-				break;
-			}
-			case R.id.advanced_api_config_label: {
-				final boolean isVisible = mAdvancedAPIConfigView.isShown();
-				final int compoundRes = isVisible ? R.drawable.expander_close_holo : R.drawable.expander_open_holo;
-				mAdvancedAPIConfigLabel.setCompoundDrawablesWithIntrinsicBounds(compoundRes, 0, 0, 0);
-				mAdvancedAPIConfigView.setVisibility(isVisible ? View.GONE : View.VISIBLE);
-				break;
-			}
-		}
-	}
+    @Override
+    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        mEditNoVersionSuffixChanged = true;
+    }
 
-	@Override
-	public void onContentChanged() {
-		super.onContentChanged();
-		mEditAPIUrlFormat = (EditText) findViewById(R.id.api_url_format);
-		mEditAuthType = (RadioGroup) findViewById(R.id.auth_type);
-		mButtonOAuth = (RadioButton) findViewById(R.id.oauth);
-		mButtonxAuth = (RadioButton) findViewById(R.id.xauth);
-		mButtonBasic = (RadioButton) findViewById(R.id.basic);
-		mButtonTwipOMode = (RadioButton) findViewById(R.id.twip_o);
-		mAdvancedAPIConfigContainer = findViewById(R.id.advanced_api_config_container);
-		mAdvancedAPIConfigLabel = (TextView) findViewById(R.id.advanced_api_config_label);
-		mAdvancedAPIConfigView = findViewById(R.id.advanced_api_config);
-		mEditSameOAuthSigningUrl = (CheckBox) findViewById(R.id.same_oauth_signing_url);
-		mEditConsumerKey = (EditText) findViewById(R.id.consumer_key);
-		mEditConsumerSecret = (EditText) findViewById(R.id.consumer_secret);
-		mSaveButton = (Button) findViewById(R.id.save);
-	}
+    @Override
+    public void onClick(final View v) {
+        switch (v.getId()) {
+            case R.id.save: {
+                if (checkApiUrl()) {
+                    saveAndFinish();
+                } else {
+                    mEditAPIUrlFormat.setError(getString(R.string.wrong_url_format));
+                }
+                break;
+            }
+            case R.id.api_url_format_help: {
+                Toast.makeText(this, R.string.api_url_format_help, Toast.LENGTH_LONG).show();
+                break;
+            }
+        }
+    }
 
-	@Override
-	public void onSaveInstanceState(final Bundle outState) {
-		final String apiUrlFormat = parseString(mEditAPIUrlFormat.getText());
-		final int authType = getCheckedAuthType(mEditAuthType.getCheckedRadioButtonId());
-		final boolean sameOAuthSigningUrl = mEditSameOAuthSigningUrl.isChecked();
-		final String consumerKey = parseString(mEditConsumerKey.getText());
-		final String consumerSecret = parseString(mEditConsumerSecret.getText());
-		outState.putString(Accounts.API_URL_FORMAT, apiUrlFormat);
-		outState.putInt(Accounts.AUTH_TYPE, authType);
-		outState.putBoolean(Accounts.SAME_OAUTH_SIGNING_URL, sameOAuthSigningUrl);
-		outState.putString(Accounts.CONSUMER_KEY, consumerKey);
-		outState.putString(Accounts.CONSUMER_SECRET, consumerSecret);
-		super.onSaveInstanceState(outState);
-	}
+    private boolean checkApiUrl() {
+        return TwitterAPIFactory.verifyApiFormat(String.valueOf(mEditAPIUrlFormat.getText()));
+    }
 
-	public void saveAndFinish() {
-		final String apiUrlFormat = parseString(mEditAPIUrlFormat.getText());
-		final int authType = getCheckedAuthType(mEditAuthType.getCheckedRadioButtonId());
-		final boolean sameOAuthSigningUrl = mEditSameOAuthSigningUrl.isChecked();
-		final String consumerKey = parseString(mEditConsumerKey.getText());
-		final String consumerSecret = parseString(mEditConsumerSecret.getText());
-		final Intent intent = new Intent();
-		intent.putExtra(Accounts.API_URL_FORMAT, apiUrlFormat);
-		intent.putExtra(Accounts.AUTH_TYPE, authType);
-		intent.putExtra(Accounts.SAME_OAUTH_SIGNING_URL, sameOAuthSigningUrl);
-		intent.putExtra(Accounts.CONSUMER_KEY, consumerKey);
-		intent.putExtra(Accounts.CONSUMER_SECRET, consumerSecret);
-		setResult(RESULT_OK, intent);
-		finish();
-	}
+    @Override
+    public void onContentChanged() {
+        super.onContentChanged();
+        mEditAPIUrlFormat = (EditText) findViewById(R.id.api_url_format);
+        mEditAuthType = (RadioGroup) findViewById(R.id.auth_type);
+        mButtonOAuth = (RadioButton) findViewById(R.id.oauth);
+        mButtonXAuth = (RadioButton) findViewById(R.id.xauth);
+        mButtonBasic = (RadioButton) findViewById(R.id.basic);
+        mButtonTWIPOMode = (RadioButton) findViewById(R.id.twip_o);
+        mEditSameOAuthSigningUrl = (CheckBox) findViewById(R.id.same_oauth_signing_url);
+        mEditNoVersionSuffix = (CheckBox) findViewById(R.id.no_version_suffix);
+        mEditConsumerKey = (EditText) findViewById(R.id.consumer_key);
+        mEditConsumerSecret = (EditText) findViewById(R.id.consumer_secret);
+        mSaveButton = (Button) findViewById(R.id.save);
+        mAPIFormatHelpButton = findViewById(R.id.api_url_format_help);
+    }
 
-	@Override
-	protected void onCreate(final Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_api_editor);
+    @Override
+    public void onSaveInstanceState(final Bundle outState) {
+        final String apiUrlFormat = parseString(mEditAPIUrlFormat.getText());
+        final int authType = getCheckedAuthType(mEditAuthType.getCheckedRadioButtonId());
+        final boolean sameOAuthSigningUrl = mEditSameOAuthSigningUrl.isChecked();
+        final boolean noVersionSuffix = mEditNoVersionSuffix.isChecked();
+        final String consumerKey = parseString(mEditConsumerKey.getText());
+        final String consumerSecret = parseString(mEditConsumerSecret.getText());
+        outState.putString(Accounts.API_URL_FORMAT, apiUrlFormat);
+        outState.putInt(Accounts.AUTH_TYPE, authType);
+        outState.putBoolean(Accounts.SAME_OAUTH_SIGNING_URL, sameOAuthSigningUrl);
+        outState.putBoolean(Accounts.NO_VERSION_SUFFIX, noVersionSuffix);
+        outState.putString(Accounts.CONSUMER_KEY, consumerKey);
+        outState.putString(Accounts.CONSUMER_SECRET, consumerSecret);
+        super.onSaveInstanceState(outState);
+    }
 
-		String apiUrlFormat;
-		int authType;
-		boolean sameOAuthSigningUrl;
-		String consumerKey, consumerSecret;
+    public void saveAndFinish() {
+        final String apiUrlFormat = parseString(mEditAPIUrlFormat.getText());
+        final int authType = getCheckedAuthType(mEditAuthType.getCheckedRadioButtonId());
+        final boolean sameOAuthSigningUrl = mEditSameOAuthSigningUrl.isChecked();
+        final boolean noVersionSuffix = mEditNoVersionSuffix.isChecked();
+        final String consumerKey = parseString(mEditConsumerKey.getText());
+        final String consumerSecret = parseString(mEditConsumerSecret.getText());
+        final Intent intent = new Intent();
+        intent.putExtra(Accounts.API_URL_FORMAT, apiUrlFormat);
+        intent.putExtra(Accounts.AUTH_TYPE, authType);
+        intent.putExtra(Accounts.SAME_OAUTH_SIGNING_URL, sameOAuthSigningUrl);
+        intent.putExtra(Accounts.NO_VERSION_SUFFIX, noVersionSuffix);
+        intent.putExtra(Accounts.CONSUMER_KEY, consumerKey);
+        intent.putExtra(Accounts.CONSUMER_SECRET, consumerSecret);
+        setResult(RESULT_OK, intent);
+        finish();
+    }
 
-		final SharedPreferences pref = getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
-		final String prefApiUrlFormat = getNonEmptyString(pref, KEY_API_URL_FORMAT, DEFAULT_REST_BASE_URL);
-		final int prefAuthType = pref.getInt(KEY_AUTH_TYPE, Accounts.AUTH_TYPE_OAUTH);
-		final boolean prefSameOAuthSigningUrl = pref.getBoolean(KEY_SAME_OAUTH_SIGNING_URL, false);
-		final String prefConsumerKey = getNonEmptyString(pref, KEY_CONSUMER_KEY, TWITTER_CONSUMER_KEY_2);
-		final String prefConsumerSecret = getNonEmptyString(pref, KEY_CONSUMER_SECRET, TWITTER_CONSUMER_SECRET_2);
-		if (savedInstanceState != null) {
-			apiUrlFormat = trim(savedInstanceState.getString(Accounts.API_URL_FORMAT, prefApiUrlFormat));
-			authType = savedInstanceState.getInt(Accounts.AUTH_TYPE, prefAuthType);
-			sameOAuthSigningUrl = savedInstanceState.getBoolean(Accounts.SAME_OAUTH_SIGNING_URL,
-					prefSameOAuthSigningUrl);
-			consumerKey = trim(savedInstanceState.getString(Accounts.CONSUMER_KEY, prefConsumerKey));
-			consumerSecret = trim(savedInstanceState.getString(Accounts.CONSUMER_SECRET, prefConsumerSecret));
-		} else {
-			final Intent intent = getIntent();
-			final Bundle extras = intent.getExtras();
-			apiUrlFormat = trim(extras.getString(Accounts.API_URL_FORMAT, prefApiUrlFormat));
-			authType = extras.getInt(Accounts.AUTH_TYPE, prefAuthType);
-			sameOAuthSigningUrl = extras.getBoolean(Accounts.SAME_OAUTH_SIGNING_URL, prefSameOAuthSigningUrl);
-			consumerKey = trim(extras.getString(Accounts.CONSUMER_KEY, prefConsumerKey));
-			consumerSecret = trim(extras.getString(Accounts.CONSUMER_SECRET, prefConsumerSecret));
-		}
+    @Override
+    protected void onCreate(final Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-		mEditAuthType.setOnCheckedChangeListener(this);
-		mAdvancedAPIConfigLabel.setOnClickListener(this);
-		mSaveButton.setOnClickListener(this);
+        final Intent intent = getIntent();
+        final Bundle extras = intent.getExtras();
 
-		mEditAPIUrlFormat.setText(apiUrlFormat);
-		mEditSameOAuthSigningUrl.setChecked(sameOAuthSigningUrl);
-		mEditConsumerKey.setText(consumerKey);
-		mEditConsumerSecret.setText(consumerSecret);
+        setContentView(R.layout.activity_api_editor);
 
-		mButtonOAuth.setChecked(authType == Accounts.AUTH_TYPE_OAUTH);
-		mButtonxAuth.setChecked(authType == Accounts.AUTH_TYPE_XAUTH);
-		mButtonBasic.setChecked(authType == Accounts.AUTH_TYPE_BASIC);
-		mButtonTwipOMode.setChecked(authType == Accounts.AUTH_TYPE_TWIP_O_MODE);
-		if (mEditAuthType.getCheckedRadioButtonId() == -1) {
-			mButtonOAuth.setChecked(true);
-		}
-	}
+        String apiUrlFormat;
+        int authType;
+        boolean sameOAuthSigningUrl, noVersionSuffix;
+        String consumerKey, consumerSecret;
 
-	private boolean checkUrlErrors() {
-		final boolean urlHasErrors = false;
-		return urlHasErrors;
-	}
+        final SharedPreferences pref = getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
+        final String prefApiUrlFormat = getNonEmptyString(pref, KEY_API_URL_FORMAT, DEFAULT_TWITTER_API_URL_FORMAT);
+        final int prefAuthType = pref.getInt(KEY_AUTH_TYPE, ParcelableCredentials.AUTH_TYPE_OAUTH);
+        final boolean prefSameOAuthSigningUrl = pref.getBoolean(KEY_SAME_OAUTH_SIGNING_URL, false);
+        final boolean prefNoVersionSuffix = pref.getBoolean(KEY_NO_VERSION_SUFFIX, false);
+        final String prefConsumerKey = getNonEmptyString(pref, KEY_CONSUMER_KEY, TWITTER_CONSUMER_KEY);
+        final String prefConsumerSecret = getNonEmptyString(pref, KEY_CONSUMER_SECRET, TWITTER_CONSUMER_SECRET);
+        final Bundle bundle;
+        if (savedInstanceState != null) {
+            bundle = savedInstanceState;
+        } else if (extras != null) {
+            bundle = extras;
+        } else {
+            bundle = new Bundle();
+        }
+        apiUrlFormat = trim(bundle.getString(Accounts.API_URL_FORMAT, prefApiUrlFormat));
+        authType = bundle.getInt(Accounts.AUTH_TYPE, prefAuthType);
+        sameOAuthSigningUrl = bundle.getBoolean(Accounts.SAME_OAUTH_SIGNING_URL, prefSameOAuthSigningUrl);
+        noVersionSuffix = bundle.getBoolean(Accounts.NO_VERSION_SUFFIX, prefNoVersionSuffix);
+        consumerKey = trim(bundle.getString(Accounts.CONSUMER_KEY, prefConsumerKey));
+        consumerSecret = trim(bundle.getString(Accounts.CONSUMER_SECRET, prefConsumerSecret));
 
-	private int getCheckedAuthType(final int checkedId) {
-		switch (checkedId) {
-			case R.id.xauth: {
-				return Accounts.AUTH_TYPE_XAUTH;
-			}
-			case R.id.basic: {
-				return Accounts.AUTH_TYPE_BASIC;
-			}
-			case R.id.twip_o: {
-				return Accounts.AUTH_TYPE_TWIP_O_MODE;
-			}
-			default: {
-				return Accounts.AUTH_TYPE_OAUTH;
-			}
-		}
-	}
+        mEditAuthType.setOnCheckedChangeListener(this);
+        mEditNoVersionSuffix.setOnCheckedChangeListener(this);
+        mSaveButton.setOnClickListener(this);
+        mAPIFormatHelpButton.setOnClickListener(this);
 
-	public static class TWIPNoticeDialogFragment extends BaseDialogFragment implements DialogInterface.OnClickListener {
+        mEditAPIUrlFormat.setText(apiUrlFormat);
+        mEditSameOAuthSigningUrl.setChecked(sameOAuthSigningUrl);
+        mEditNoVersionSuffix.setChecked(noVersionSuffix);
+        mEditConsumerKey.setText(consumerKey);
+        mEditConsumerSecret.setText(consumerSecret);
 
-		@Override
-		public void onClick(final DialogInterface dialog, final int which) {
-			switch (which) {
-				case DialogInterface.BUTTON_POSITIVE: {
-					final Activity a = getActivity();
-					if (a instanceof APIEditorActivity) {
-						((APIEditorActivity) a).saveAndFinish();
-					}
-					break;
-				}
-			}
+        mButtonOAuth.setChecked(authType == ParcelableCredentials.AUTH_TYPE_OAUTH);
+        mButtonXAuth.setChecked(authType == ParcelableCredentials.AUTH_TYPE_XAUTH);
+        mButtonBasic.setChecked(authType == ParcelableCredentials.AUTH_TYPE_BASIC);
+        mButtonTWIPOMode.setChecked(authType == ParcelableCredentials.AUTH_TYPE_TWIP_O_MODE);
+        if (mEditAuthType.getCheckedRadioButtonId() == -1) {
+            mButtonOAuth.setChecked(true);
+        }
+    }
 
-		}
-
-		@Override
-		public Dialog onCreateDialog(final Bundle savedInstanceState) {
-			final Context wrapped = ThemeUtils.getThemedContext(getActivity());
-			final AlertDialog.Builder builder = new AlertDialog.Builder(wrapped);
-			builder.setTitle(android.R.string.dialog_alert_title);
-			builder.setMessage(R.string.twip_api_version_notice_message);
-			builder.setPositiveButton(R.string.save, this);
-			builder.setNegativeButton(android.R.string.cancel, this);
-			return builder.create();
-		}
-
-	}
+    private int getCheckedAuthType(final int checkedId) {
+        switch (checkedId) {
+            case R.id.xauth: {
+                return ParcelableCredentials.AUTH_TYPE_XAUTH;
+            }
+            case R.id.basic: {
+                return ParcelableCredentials.AUTH_TYPE_BASIC;
+            }
+            case R.id.twip_o: {
+                return ParcelableCredentials.AUTH_TYPE_TWIP_O_MODE;
+            }
+            default: {
+                return ParcelableCredentials.AUTH_TYPE_OAUTH;
+            }
+        }
+    }
 }

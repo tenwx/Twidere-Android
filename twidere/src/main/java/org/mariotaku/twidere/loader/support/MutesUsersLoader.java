@@ -23,26 +23,26 @@ import android.content.Context;
 
 import org.mariotaku.twidere.model.ParcelableUser;
 
-import twitter4j.CursorPaging;
-import twitter4j.PagableResponseList;
-import twitter4j.Twitter;
-import twitter4j.TwitterException;
-import twitter4j.User;
-
 import java.util.List;
+
+import org.mariotaku.twidere.api.twitter.model.PageableResponseList;
+import org.mariotaku.twidere.api.twitter.model.Paging;
+import org.mariotaku.twidere.api.twitter.Twitter;
+import org.mariotaku.twidere.api.twitter.TwitterException;
+import org.mariotaku.twidere.api.twitter.model.User;
 
 public class MutesUsersLoader extends CursorSupportUsersLoader {
 
-	public MutesUsersLoader(final Context context, final long account_id, final long cursor,
-			final List<ParcelableUser> data) {
-		super(context, account_id, cursor, data);
-	}
+    public MutesUsersLoader(final Context context, final long accountId, final long cursor,
+                            final List<ParcelableUser> data, boolean fromUser) {
+        super(context, accountId, cursor, data, fromUser);
+    }
 
-	@Override
-	protected final PagableResponseList<User> getCursoredUsers(final Twitter twitter, final CursorPaging paging)
-			throws TwitterException {
-		if (twitter == null) return null;
-		return twitter.getMutesUsersList(paging);
-	}
+    @Override
+    protected final PageableResponseList<User> getCursoredUsers(final Twitter twitter, final Paging paging)
+            throws TwitterException {
+        if (twitter == null) return null;
+        return twitter.getMutesUsersList(paging);
+    }
 
 }

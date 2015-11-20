@@ -23,33 +23,41 @@ import android.app.Activity;
 import android.app.ListFragment;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.AbsListView.OnScrollListener;
 import android.widget.ListView;
 
 import org.mariotaku.twidere.Constants;
-import org.mariotaku.twidere.activity.iface.IThemedActivity;
 import org.mariotaku.twidere.app.TwidereApplication;
 import org.mariotaku.twidere.fragment.iface.RefreshScrollTopInterface;
-import org.mariotaku.twidere.menu.TwidereMenuInflater;
 import org.mariotaku.twidere.util.AsyncTwitterWrapper;
 import org.mariotaku.twidere.util.MultiSelectManager;
+import org.mariotaku.twidere.util.SharedPreferencesWrapper;
 import org.mariotaku.twidere.util.Utils;
+import org.mariotaku.twidere.util.dagger.ApplicationModule;
+import org.mariotaku.twidere.util.dagger.DaggerGeneralComponent;
+
+import javax.inject.Inject;
 
 public class BaseListFragment extends ListFragment implements Constants, OnScrollListener, RefreshScrollTopInterface {
 
+    @Inject
+    protected AsyncTwitterWrapper mTwitterWrapper;
+    @Inject
+    protected SharedPreferencesWrapper mPreferences;
     private boolean mActivityFirstCreated;
     private boolean mIsInstanceStateSaved;
-
     private boolean mReachedBottom, mNotReachedBottomBefore = true;
+
+    @Override
+    public void onAttach(Activity activity) {
+        super.onAttach(activity);
+        DaggerGeneralComponent.builder().applicationModule(ApplicationModule.get(activity)).build().inject(this);
+    }
 
     public final TwidereApplication getApplication() {
         return TwidereApplication.getInstance(getActivity());
@@ -59,10 +67,6 @@ public class BaseListFragment extends ListFragment implements Constants, OnScrol
         final Activity activity = getActivity();
         if (activity != null) return activity.getContentResolver();
         return null;
-    }
-
-    public final MultiSelectManager getMultiSelectManager() {
-        return getApplication() != null ? getApplication().getMultiSelectManager() : null;
     }
 
     public final SharedPreferences getSharedPreferences(final String name, final int mode) {
@@ -82,28 +86,10 @@ public class BaseListFragment extends ListFragment implements Constants, OnScrol
         return args != null ? args.getInt(EXTRA_TAB_POSITION, -1) : -1;
     }
 
-    public AsyncTwitterWrapper getTwitterWrapper() {
-        return getApplication() != null ? getApplication().getTwitterWrapper() : null;
-    }
-
     public void invalidateOptionsMenu() {
         final Activity activity = getActivity();
         if (activity == null) return;
         activity.invalidateOptionsMenu();
-    }
-
-    @Override
-    public final void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        final Activity activity = getActivity();
-        if (activity instanceof IThemedActivity) {
-            onCreateOptionsMenu(menu, ((IThemedActivity) activity).getTwidereMenuInflater());
-        } else {
-            super.onCreateOptionsMenu(menu, inflater);
-        }
-    }
-
-    public void onCreateOptionsMenu(Menu menu, TwidereMenuInflater inflater) {
-
     }
 
     public boolean isActivityFirstCreated() {
@@ -127,19 +113,9 @@ public class BaseListFragment extends ListFragment implements Constants, OnScrol
     }
 
     @Override
-    public void onAttach(final Activity activity) {
-        super.onAttach(activity);
-    }
-
-    @Override
     public void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mActivityFirstCreated = true;
-    }
-
-    @Override
-    public View onCreateView(final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-        return super.onCreateView(inflater, container, savedInstanceState);
     }
 
     @Override

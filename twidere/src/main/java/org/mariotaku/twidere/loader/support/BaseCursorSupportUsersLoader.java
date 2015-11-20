@@ -22,49 +22,54 @@ package org.mariotaku.twidere.loader.support;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.mariotaku.twidere.loader.support.iface.ICursorSupportLoader;
 import org.mariotaku.twidere.model.ParcelableUser;
-
-import twitter4j.CursorSupport;
 
 import java.util.List;
 
-public abstract class BaseCursorSupportUsersLoader extends Twitter4JUsersLoader {
+import org.mariotaku.twidere.api.twitter.model.CursorSupport;
 
-	private final long mCursor;
-	private final SharedPreferences mPreferences;
-	private final int mLoadItemLimit;
+public abstract class BaseCursorSupportUsersLoader extends TwitterAPIUsersLoader
+        implements ICursorSupportLoader {
 
-	private long mNextCursor, mPrevCursor;
+    private final long mCursor;
+    private final SharedPreferences mPreferences;
+    private final int mLoadItemLimit;
 
-	public BaseCursorSupportUsersLoader(final Context context, final long account_id, final long cursor,
-			final List<ParcelableUser> data) {
-		super(context, account_id, data);
-		mCursor = cursor;
-		mPreferences = getContext().getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
-		final int prefs_load_item_limit = mPreferences.getInt(KEY_LOAD_ITEM_LIMIT, DEFAULT_LOAD_ITEM_LIMIT);
-		mLoadItemLimit = Math.min(100, prefs_load_item_limit);
-	}
+    private long mNextCursor, mPrevCursor;
 
-	public final int getCount() {
-		return mLoadItemLimit;
-	}
+    public BaseCursorSupportUsersLoader(final Context context, final long accountId, final long cursor,
+                                        final List<ParcelableUser> data, boolean fromUser) {
+        super(context, accountId, data, fromUser);
+        mCursor = cursor;
+        mPreferences = context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE);
+        final int loadItemLimit = mPreferences.getInt(KEY_LOAD_ITEM_LIMIT, DEFAULT_LOAD_ITEM_LIMIT);
+        mLoadItemLimit = Math.min(100, loadItemLimit);
+    }
 
-	public final long getCursor() {
-		return mCursor;
-	}
+    public final int getCount() {
+        return mLoadItemLimit;
+    }
 
-	public final long getNextCursor() {
-		return mNextCursor;
-	}
+    @Override
+    public final long getCursor() {
+        return mCursor;
+    }
 
-	public final long getPrevCursor() {
-		return mPrevCursor;
-	}
+    @Override
+    public final long getNextCursor() {
+        return mNextCursor;
+    }
 
-	protected final void setCursorIds(final CursorSupport cursor) {
-		if (cursor == null) return;
-		mNextCursor = cursor.getNextCursor();
-		mPrevCursor = cursor.getPreviousCursor();
-	}
+    @Override
+    public final long getPrevCursor() {
+        return mPrevCursor;
+    }
+
+    protected final void setCursorIds(final CursorSupport cursor) {
+        if (cursor == null) return;
+        mNextCursor = cursor.getNextCursor();
+        mPrevCursor = cursor.getPreviousCursor();
+    }
 
 }
